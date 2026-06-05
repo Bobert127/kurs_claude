@@ -5,7 +5,14 @@
       "Bash(git config *)",
       "Bash(git --version)",
       "Bash(gh --version)",
-      "Bash(gh repo *)"
+      "Bash(gh repo *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git -C \"C:/!bat/Claude/kurscc\" status)",
+      "Bash(git -C \"C:/!bat/Claude/kurscc\" log --oneline -5)",
+      "Bash(git -C \"C:/!bat/Claude/kurscc\" diff hsbc/hsbcsd_dyzuryw_w_czasie_pracy_v2.sql)",
+      "Bash(git -C \"C:/!bat/Claude/kurscc\" diff .claude/settings.local.json)",
+      "Bash(git *)"
     ]
   }
 }
