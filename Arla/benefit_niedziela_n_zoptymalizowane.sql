@@ -28,7 +28,7 @@ DECLARE
            AND prac.firm_id       = 100
            AND ( ov.uzasadnienie != 'benefit niedziela i swieto'
               OR ov.uzasadnienie IS NULL )
-           AND sysdate           >= ov.data - 60
+           AND ov.data            BETWEEN sysdate - 60 AND sysdate + 60
            AND ov.czas            = 8;
 
 BEGIN

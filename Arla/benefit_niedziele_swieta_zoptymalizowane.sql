@@ -24,7 +24,7 @@ DECLARE
            AND ov.payment_only  = 'N'
            AND ( ov.uzasadnienie != 'benefit niedziela i swieto'
               OR ov.uzasadnienie IS NULL )
-           AND sysdate          >= ov.data - 60
+           AND ov.data           BETWEEN sysdate - 60 AND sysdate + 60
            AND ov.czas          = 8
            AND prac.prac_id     = ov.prac_id
            AND ov.id            != 41392

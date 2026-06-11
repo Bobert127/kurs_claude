@@ -28,7 +28,7 @@ DECLARE
            AND prac.prac_id      = ov.prac_id
         -- AND ov.id             = 11520
            AND prac.firm_id      = 100
-           AND sysdate           >= ov.data - 60
+           AND ov.data            BETWEEN sysdate - 60 AND sysdate + 60
            AND ( ov.uzasadnienie != 'benefit nadgodziny'
               OR ov.uzasadnienie IS NULL );
 
