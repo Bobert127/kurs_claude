@@ -1,16 +1,13 @@
 -- ============================================================
 -- ZAPYTANIE ZOPTYMALIZOWANE
--- Zmiana: INSERT z pozycyjną listą wartości zastąpiony przez
--- %ROWTYPE + INSERT INTO ... VALUES rekord — odporne na dodanie
--- nowych kolumn do tabeli kp_rcp_zlec_nadg_prac.
+-- INSERT uzywa %ROWTYPE — odporne na dodanie nowych kolumn.
+-- ID nowego rekordu pochodzi wylacznie z kp_rczp_seq.nextval.
 -- ============================================================
 
--- ============================================================
--- Blok 1: Insert benefitów dla nadgodzin w niedziele/święta
--- ============================================================
 DECLARE
-    src_rec   kp_rcp_zlec_nadg_prac%ROWTYPE;   -- automatycznie dopasowuje się do schematu tabeli
+    src_rec   kp_rcp_zlec_nadg_prac%ROWTYPE;
     v_kali_id kp_rcp_zlec_nadg_prac.kali_id%TYPE;
+    v_new_id  kp_rcp_zlec_nadg_prac.id%TYPE;
 
     CURSOR c IS
         SELECT DISTINCT
@@ -18,32 +15,37 @@ DECLARE
             ov.prac_id,
             ov.day_off_in_lieu,
             ov.hours_off_in_lieu
-        FROM   nt_kp_kdr_kalendarze_prac         ka
-             , t_prac                             prac
-             , kp_rcp_zlec_nadg_prac              ov
-        LEFT JOIN kp_rcp_zlec_nadg_prac_benefity  ben ON ben.ben_id = ov.id
+        FROM   nt_kp_kdr_kalendarze_prac        ka
+             , t_prac                            prac
+             , kp_rcp_zlec_nadg_prac             ov
+        LEFT JOIN kp_rcp_zlec_nadg_prac_benefity ben ON ben.ben_id = ov.id
         WHERE  ov.kali_id      = ka.id
           AND  ka.typ_dnia    IN ('S', 'WS')
           AND  ov.payment_only  = 'N'
-          AND  (ov.uzasadnienie != 'benefit niedziela i święto' OR ov.uzasadnienie IS NULL)
-          AND  sysdate         >= ov.data - 60      -- TO_DATE(SYSDATE,...) bylo bledne; SYSDATE to juz DATE
+          AND  (ov.uzasadnienie != 'benefit niedziela i swięto' OR ov.uzasadnienie IS NULL)
+          AND  sysdate         >= ov.data - 60
           AND  ov.czas          = 8
           AND  prac.prac_id     = ov.prac_id
           AND  ov.id           != 41392
+          AND  ov.id            = 65450
           AND  prac.firm_id     = 100;
 BEGIN
     FOR rec IN c LOOP
         CONTINUE WHEN rec.ov_id IS NULL;
 
-        -- jeden SELECT zastepuje ~10 podzapytan do tego samego wiersza
+        -- Pobierz nowe ID z sekwencji PRZED skopiowaniem rekordu zrodlowego
+        SELECT kp_rczp_seq.nextval INTO v_new_id FROM dual;
+
+        -- Jeden SELECT zamiast ~10 podzapytan do tego samego wiersza
         SELECT * INTO src_rec
         FROM   kp_rcp_zlec_nadg_prac
         WHERE  id = rec.ov_id;
 
+        -- Wyznacz wolny dzien w kalendarzu pracownika
         BEGIN
             SELECT kal.id INTO v_kali_id
-            FROM   nt_kp_kdr_kalendarze_prac  kal
-                 , l_umowy                    luw
+            FROM   nt_kp_kdr_kalendarze_prac kal
+                 , l_umowy                   luw
             WHERE  kal.typ_dnia IN ('S', 'N')
               AND  luw.prac_id    = kal.prac_id
               AND  luw.data_od   <= sysdate
@@ -64,24 +66,22 @@ BEGIN
             WHEN NO_DATA_FOUND THEN v_kali_id := NULL;
         END;
 
-        -- nadpisz tylko pola rozniace sie od rekordu zrodlowego
-        src_rec.id                := kp_rczp_seq.nextval;
+        -- Nadpisz pola rozniace sie od rekordu zrodlowego
+        src_rec.id                := v_new_id;          -- ID wylacznie z sekwencji
         src_rec.uzasadnienie      := 'benefit niedziela i swieto';
         src_rec.kali_id           := v_kali_id;
         src_rec.payment_only      := 'N';
         src_rec.day_off_in_lieu   := rec.day_off_in_lieu;
         src_rec.hours_off_in_lieu := rec.hours_off_in_lieu;
-
-        -- pozostale pola hardcoded z oryginalu -- uzupelnij wlasciwe nazwy kolumn:
+        -- Pozostale pola hardcoded z oryginalu — uzupelnij wlasciwe nazwy kolumn:
         -- src_rec.<kolumna_poz_9>  := NULL;
         -- src_rec.<utw_przez>      := 'ARLA (unknown)';
         -- src_rec.<kolumna_poz_13> := NULL;
         -- src_rec.<settled>        := 'T';
         -- src_rec.<guid_col>       := SYS_GUID();
         -- src_rec.<typ_nadg>       := '02';
-        -- src_rec.<...>            := 'N' / '0' / NULL  -- pola z oryg. listy
 
-        -- INSERT odporny na dodanie nowych kolumn -- %ROWTYPE automatycznie je obsluz
+        -- INSERT odporny na dodanie nowych kolumn do tabeli
         INSERT INTO kp_rcp_zlec_nadg_prac VALUES src_rec;
 
         INSERT INTO kp_rcp_zlec_nadg_prac_benefity
@@ -94,8 +94,7 @@ END;
 
 
 -- ============================================================
--- Blok 2: Zmiana payment_only — zastapiony jednym UPDATE
--- (petla kursor -> UPDATE -> commit per wiersz byla zbedna)
+-- Blok 2: Zmiana payment_only — pojedynczy UPDATE bez kursora
 -- ============================================================
 BEGIN
     UPDATE kp_rcp_zlec_nadg_prac ov
