@@ -86,7 +86,7 @@ BEGIN
         -- src_rec.<utw_przez>      := 'ARLA (unknown)';
         -- src_rec.<kolumna_poz_13> := NULL;
         -- src_rec.<settled>        := 'T';
-        -- src_rec.<guid_col>       := SYS_GUID();
+        src_rec.guid             := SYS_GUID();   -- nowy GUID — wymagany przez KP_RCZP_GUID_UK
         -- src_rec.<typ_nadg>       := '02';
 
         INSERT INTO kp_rcp_zlec_nadg_prac
