@@ -75,19 +75,37 @@ BEGIN
         END;
 
         -- nadpisz tylko pola rozniace sie od rekordu zrodlowego
-        src_rec.id                := v_new_id;
-        src_rec.uzasadnienie      := 'benefit niedziela i swieto';
-        src_rec.kali_id           := v_kali_id;
-        src_rec.payment_only      := 'N';
-        src_rec.day_off_in_lieu   := rec.day_off_in_lieu;
-        src_rec.hours_off_in_lieu := rec.hours_off_in_lieu;
+        src_rec.id                    := v_new_id;
+        src_rec.uzasadnienie          := 'benefit niedziela i swieto';
+        src_rec.kali_id               := v_kali_id;
+        src_rec.payment_only          := 'N';
+        src_rec.day_off_in_lieu       := rec.day_off_in_lieu;
+        src_rec.hours_off_in_lieu     := rec.hours_off_in_lieu;
+        src_rec.classified_seconds_01 := src_rec.classified_seconds_01;
+        src_rec.classified_seconds_02 := src_rec.classified_seconds_02;
+        src_rec.classified_seconds_03 := src_rec.classified_seconds_03;
+        src_rec.classified_seconds_04 := src_rec.classified_seconds_04;
+        src_rec.classified_seconds_05 := src_rec.classified_seconds_05;
+        src_rec.classified_seconds_10 := src_rec.classified_seconds_10;
+        src_rec.classified_seconds_11 := src_rec.classified_seconds_11;
+        src_rec.classified_seconds_12 := src_rec.classified_seconds_12;
+        src_rec.classified_seconds_20 := src_rec.classified_seconds_20;
+        src_rec.classified_seconds_21 := src_rec.classified_seconds_21;
+        src_rec.classified_seconds_24 := src_rec.classified_seconds_24;
+        src_rec.classified_seconds_30 := src_rec.classified_seconds_30;
+        src_rec.classified_seconds_31 := src_rec.classified_seconds_31;
+        src_rec.classified_seconds_32 := src_rec.classified_seconds_32;
+        src_rec.classified_seconds_33 := src_rec.classified_seconds_33;
+        src_rec.classified_seconds_34 := src_rec.classified_seconds_34;
+        src_rec.classified_seconds_35 := src_rec.classified_seconds_35;
+        src_rec.classified_seconds_36 := src_rec.classified_seconds_36;
         -- pozostale pola hardcoded z oryginalu — uzupelnij wlasciwe nazwy kolumn:
         -- src_rec.<kolumna_poz_9>  := NULL;
         -- src_rec.<utw_przez>      := 'ARLA (unknown)';
         -- src_rec.<kolumna_poz_13> := NULL;
         -- src_rec.<settled>        := 'T';
-        src_rec.guid             := SYS_GUID();   -- nowy GUID — wymagany przez KP_RCZP_GUID_UK
-        -- src_rec.<typ_nadg>       := '02';
+        src_rec.guid                  := SYS_GUID();
+        -- src_rec.<typ_nadg>          := '02';
 
         INSERT INTO kp_rcp_zlec_nadg_prac
         VALUES src_rec;
