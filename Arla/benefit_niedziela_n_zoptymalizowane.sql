@@ -78,13 +78,8 @@ BEGIN
         src_rec.uzasadnienie := 'benefit niedziela i swieto';
         src_rec.kali_id      := v_kali_id;
         src_rec.payment_only := 'N';
+        src_rec.settled      := 'N';
         src_rec.guid         := SYS_GUID();
-        -- pozostale pola hardcoded z oryginalu — uzupelnij wlasciwe nazwy kolumn:
-        -- src_rec.<kolumna_poz_9>  := NULL;
-        -- src_rec.<utw_przez>      := 'ARLA (unknown)';
-        -- src_rec.<kolumna_poz_13> := NULL;
-        -- src_rec.<settled>        := 'T';
-        -- src_rec.<typ_nadg>       := '02';
 
         INSERT INTO kp_rcp_zlec_nadg_prac
         VALUES src_rec;
