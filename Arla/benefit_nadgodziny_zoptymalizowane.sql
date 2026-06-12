@@ -4,6 +4,7 @@
 -- ID nowego rekordu pochodzi wylacznie z kp_rczp_seq.nextval.
 -- Pola zalezne od siebie (godz, approved) zapisane w zmiennych
 -- pomocniczych przed nadpisaniem src_rec.
+-- modyfikacja v2 — kolumna settled ustawiana na N
 -- ============================================================
 DECLARE
     src_rec                kp_rcp_zlec_nadg_prac%ROWTYPE;
@@ -13,24 +14,20 @@ DECLARE
 
     CURSOR c IS
         SELECT DISTINCT
-               CASE WHEN ben.id IS NULL THEN ov.id END AS ov_id,
-               ov.czas
-          FROM nt_kp_kdr_kalendarze_prac        ka
-             , t_prac                            prac
-             , kp_rcp_zlec_nadg_prac             ov
-          LEFT JOIN kp_rcp_zlec_nadg_prac_benefity ben
-                 ON ben.ben_id = ov.id
+               CASE WHEN ben.id IS NULL THEN ov.id END AS ov_id, ov.czas
+          FROM nt_kp_kdr_kalendarze_prac ka, t_prac prac, kp_rcp_zlec_nadg_prac  ov
+          LEFT JOIN kp_rcp_zlec_nadg_prac_benefity ben ON ben.ben_id = ov.id
          WHERE ov.kali_id        = ka.id
+           AND OV.PRAC_ID        = ka.PRAC_ID
            AND ov.hours_off_in_lieu = 'T'
            AND ov.rczn_id        IN (31, 32)
            AND ka.typ_dnia       IS NULL
            AND ov.payment_only   = 'N'
            AND prac.prac_id      = ov.prac_id
-        -- AND ov.id             = 11520
+        -- AND ov.id             = 65426
            AND prac.firm_id      = 100
-           AND ov.data            BETWEEN sysdate - 60 AND sysdate + 60
-           AND ( ov.uzasadnienie != 'benefit nadgodziny'
-              OR ov.uzasadnienie IS NULL );
+           AND sysdate           >= ov.data - 60
+           AND ( ov.uzasadnienie != 'benefit nadgodziny' OR ov.uzasadnienie IS NULL );
 
 BEGIN
     FOR rec IN c LOOP
@@ -56,6 +53,7 @@ BEGIN
         src_rec.id                    := v_new_id;
         src_rec.uzasadnienie          := 'benefit nadgodziny';
         src_rec.payment_only          := 'N';
+        src_rec.settled               := 'N';
         src_rec.godz_od               := v_godz_do_src;
         src_rec.godz_do               := v_godz_do_src + rec.czas / 2 / 24;
         src_rec.czas                  := src_rec.czas / 2;
@@ -81,12 +79,6 @@ BEGIN
         src_rec.classified_seconds_35 := src_rec.classified_seconds_35 / 2;
         src_rec.classified_seconds_36 := src_rec.classified_seconds_36 / 2;
         src_rec.guid                  := SYS_GUID();
-        -- pozostale pola hardcoded z oryginalu — uzupelnij wlasciwe nazwy kolumn:
-        -- src_rec.<kolumna_poz_9>  := NULL;
-        -- src_rec.<utw_przez>      := 'ARLA (unknown)';
-        -- src_rec.<kolumna_poz_13> := NULL;
-        -- src_rec.<settled>        := 'T';
-        -- src_rec.<typ_nadg>       := '02';
 
         INSERT INTO kp_rcp_zlec_nadg_prac
         VALUES src_rec;
