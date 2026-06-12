@@ -76,6 +76,7 @@ end;
 
 
 -- ============================================================
+-- ORYGINALNE ZAPYTANIE
 -- Blok 2: Zmiana payment_only dla odbioru w soboty
 -- ============================================================
 declare
