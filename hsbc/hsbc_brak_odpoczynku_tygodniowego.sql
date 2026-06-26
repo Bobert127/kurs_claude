@@ -176,9 +176,20 @@ LEFT JOIN pary_agg pa
 ORDER BY p.nazwisko, p.imie, o.poczatek_okresu, t.nr;
 
 
--- ============================================================
--- wersja 3 - raport z uwzględnieniem zleceń i zdarzeń czasu pracy
--- ============================================================
+-- =====================================================================
+-- Nieprzerwany odpoczynek tygodniowy - wersja 3 (poprawiona)
+--
+-- POPRAWKA wzgledem v1/v2:
+--   Poprzednia logika zwijala wszystkie przerwy w oknie do jednego
+--   przedzialu (MIN(start)/MAX(koniec)) i liczyla tylko odstep PRZED
+--   pierwsza i PO ostatniej przerwie. Nie liczyla luki MIEDZY przerwami,
+--   ktora czesto jest najdluzsza -> stad 21 h zamiast 40 h.
+--
+--   Tutaj liczymy rzeczywiscie najdluzsza ciagla luke metoda
+--   gaps-and-islands: wszystkie przerwy (zdarzenia wtet_id=18 ∪ zlecone
+--   nadgodziny) sa przyciete do okna [k_przed_dt, k_po_dt], scalone
+--   (nakladajace sie), a nastepnie bierzemy MAX z wszystkich wolnych luk.
+-- =====================================================================
 WITH
     kalendarze AS (
         SELECT /*+ MATERIALIZE */
@@ -275,67 +286,126 @@ WITH
         WHERE n.prac_id IN (SELECT prac_id FROM prac_hr)
           AND n.data    BETWEEN DATE '2026-05-31' AND DATE '2026-07-07'
     ),
-    zdarzenia_per_para AS (
+    -- ----------------------------------------------------------------
+    -- Okno odpoczynku dla kazdej pary dni wolnych:
+    --   k_przed_dt = koniec pracy w dniu d1-1
+    --   k_po_dt    = poczatek pracy w dniu d1+2
+    -- ----------------------------------------------------------------
+    pary_okno AS (
         SELECT /*+ MATERIALIZE */
                vp.prac_id,
                vp.d1,
-               MIN(z.z_od_dt) AS min_z_od_dt,
-               MAX(z.z_do_dt) AS max_z_do_dt
-        FROM valid_pairs vp
-        JOIN zdarzenia z
-             ON  z.prac_id      = vp.prac_id
-             AND z.workday_date BETWEEN vp.d1 - 1 AND vp.d1 + 2
-        GROUP BY vp.prac_id, vp.d1
-    ),
-    nadgodziny_per_para AS (
-        SELECT /*+ MATERIALIZE */
-               vp.prac_id,
-               vp.d1,
-               MIN(n.n_od_dt) AS min_n_od_dt,
-               MAX(n.n_do_dt) AS max_n_do_dt
-        FROM valid_pairs vp
-        JOIN nadgodziny n
-             ON  n.prac_id = vp.prac_id
-             AND n.data   BETWEEN vp.d1 - 1 AND vp.d1 + 2
-        GROUP BY vp.prac_id, vp.d1
-    ),
-    pary_raw AS (
-        SELECT /*+ MATERIALIZE */
-               vp.prac_id,
-               vp.d1,
-               TRUNC(k_po.dzien_mies)    + (k_po.czas_od    - TRUNC(k_po.czas_od))    AS k_po_dt,
                TRUNC(k_przed.dzien_mies) + (k_przed.czas_do - TRUNC(k_przed.czas_do)) AS k_przed_dt,
-               zpp.min_z_od_dt,
-               zpp.max_z_do_dt,
-               npp.min_n_od_dt,
-               npp.max_n_do_dt
+               TRUNC(k_po.dzien_mies)    + (k_po.czas_od    - TRUNC(k_po.czas_od))    AS k_po_dt
         FROM valid_pairs vp
         LEFT JOIN kal_base k_przed
-             ON  k_przed.prac_id    = vp.prac_id
-             AND k_przed.dzien_mies = vp.d1 - 1
+               ON  k_przed.prac_id    = vp.prac_id
+               AND k_przed.dzien_mies = vp.d1 - 1
         LEFT JOIN kal_base k_po
-             ON  k_po.prac_id    = vp.prac_id
-             AND k_po.dzien_mies = vp.d1 + 2
-        LEFT JOIN zdarzenia_per_para  zpp ON zpp.prac_id = vp.prac_id AND zpp.d1 = vp.d1
-        LEFT JOIN nadgodziny_per_para npp ON npp.prac_id = vp.prac_id AND npp.d1 = vp.d1
+               ON  k_po.prac_id    = vp.prac_id
+               AND k_po.dzien_mies = vp.d1 + 2
     ),
+    -- ----------------------------------------------------------------
+    -- Wszystkie przerwy (zdarzenia ∪ nadgodziny) PRZYCIETE do okna.
+    -- Warunek nakladania sie eliminuje przedzialy lezace calkowicie
+    -- poza oknem (np. w godzinach pracy dnia d1-1 albo d1+2).
+    -- ----------------------------------------------------------------
+    przerwy AS (
+        SELECT /*+ MATERIALIZE */
+               po.prac_id, po.d1, po.k_przed_dt, po.k_po_dt,
+               GREATEST(z.z_od_dt, po.k_przed_dt) AS p_od,
+               LEAST(z.z_do_dt,    po.k_po_dt)    AS p_do
+        FROM pary_okno po
+        JOIN zdarzenia z
+             ON  z.prac_id = po.prac_id
+             AND z.z_do_dt > po.k_przed_dt
+             AND z.z_od_dt < po.k_po_dt
+        UNION ALL
+        SELECT po.prac_id, po.d1, po.k_przed_dt, po.k_po_dt,
+               GREATEST(n.n_od_dt, po.k_przed_dt) AS p_od,
+               LEAST(n.n_do_dt,    po.k_po_dt)    AS p_do
+        FROM pary_okno po
+        JOIN nadgodziny n
+             ON  n.prac_id = po.prac_id
+             AND n.n_do_dt > po.k_przed_dt
+             AND n.n_od_dt < po.k_po_dt
+    ),
+    -- ----------------------------------------------------------------
+    -- Scalanie nakladajacych sie przerw (gaps-and-islands).
+    -- ----------------------------------------------------------------
+    przerwy_ord AS (
+        SELECT /*+ MATERIALIZE */
+               prac_id, d1, k_przed_dt, k_po_dt, p_od, p_do,
+               MAX(p_do) OVER (
+                   PARTITION BY prac_id, d1
+                   ORDER BY p_od, p_do
+                   ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+               ) AS poprz_max_do
+        FROM przerwy
+    ),
+    przerwy_grp AS (
+        SELECT /*+ MATERIALIZE */
+               prac_id, d1, k_przed_dt, k_po_dt, p_od, p_do,
+               SUM(CASE WHEN poprz_max_do IS NULL OR p_od > poprz_max_do
+                        THEN 1 ELSE 0 END)
+                   OVER (PARTITION BY prac_id, d1
+                         ORDER BY p_od, p_do
+                         ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS grp
+        FROM przerwy_ord
+    ),
+    przerwy_merged AS (
+        SELECT /*+ MATERIALIZE */
+               prac_id, d1,
+               MIN(k_przed_dt) AS k_przed_dt,
+               MIN(k_po_dt)    AS k_po_dt,
+               MIN(p_od)       AS m_od,
+               MAX(p_do)       AS m_do
+        FROM przerwy_grp
+        GROUP BY prac_id, d1, grp
+    ),
+    -- ----------------------------------------------------------------
+    -- Wolne luki: przed pierwsza przerwa, miedzy przerwami, po ostatniej.
+    -- ----------------------------------------------------------------
+    przerwy_gaps AS (
+        SELECT /*+ MATERIALIZE */
+               prac_id, d1, k_przed_dt, k_po_dt, m_od, m_do,
+               LAG(m_do) OVER (PARTITION BY prac_id, d1 ORDER BY m_od) AS poprz_m_do,
+               ROW_NUMBER() OVER (PARTITION BY prac_id, d1 ORDER BY m_od) AS rn,
+               COUNT(*)     OVER (PARTITION BY prac_id, d1)              AS cnt
+        FROM przerwy_merged
+    ),
+    roznica AS (
+        SELECT /*+ MATERIALIZE */
+               prac_id, d1, ROUND(MAX(gap_h), 2) AS roznica_h
+        FROM (
+            -- luka przed dana przerwa (dla pierwszej: od poczatku okna)
+            SELECT prac_id, d1,
+                   (m_od - NVL(poprz_m_do, k_przed_dt)) * 24 AS gap_h
+            FROM przerwy_gaps
+            UNION ALL
+            -- luka po ostatniej przerwie (do konca okna)
+            SELECT prac_id, d1,
+                   (k_po_dt - m_do) * 24 AS gap_h
+            FROM przerwy_gaps
+            WHERE rn = cnt
+        )
+        GROUP BY prac_id, d1
+    ),
+    -- ----------------------------------------------------------------
+    -- Finalna roznica na pare. Gdy brak przerw -> pelne okno.
+    -- ----------------------------------------------------------------
     pary AS (
         SELECT /*+ MATERIALIZE */
-               prac_id,
-               d1,
-               TO_CHAR(k_po_dt,    'dd-mm-yyyy HH24:MI')
+               po.prac_id,
+               po.d1,
+               TO_CHAR(po.k_po_dt,    'dd-mm-yyyy HH24:MI')
                    || ' - '
-                   || TO_CHAR(k_przed_dt, 'dd-mm-yyyy HH24:MI') AS odejmowanie,
-               ROUND(
-                   GREATEST(
-                       (k_po_dt - k_przed_dt) * 24,
-                       NVL((min_z_od_dt - k_przed_dt) * 24, (k_po_dt - k_przed_dt) * 24),
-                       NVL((min_n_od_dt - k_przed_dt) * 24, (k_po_dt - k_przed_dt) * 24),
-                       NVL((k_po_dt - max_z_do_dt)    * 24, (k_po_dt - k_przed_dt) * 24),
-                       NVL((k_po_dt - max_n_do_dt)    * 24, (k_po_dt - k_przed_dt) * 24)
-                   )
-               , 2) AS roznica_h
-        FROM pary_raw
+                   || TO_CHAR(po.k_przed_dt, 'dd-mm-yyyy HH24:MI') AS odejmowanie,
+               NVL(r.roznica_h, ROUND((po.k_po_dt - po.k_przed_dt) * 24, 2)) AS roznica_h
+        FROM pary_okno po
+        LEFT JOIN roznica r
+               ON  r.prac_id = po.prac_id
+               AND r.d1      = po.d1
     ),
     pary_agg AS (
         SELECT /*+ MATERIALIZE */
@@ -396,6 +466,35 @@ WITH
         GROUP BY
                n.prac_id, o.poczatek_okresu,
                FLOOR((par.d1 - o.poczatek_okresu) / 7)
+    ),
+    godz_od_do_agg AS (
+        SELECT /*+ MATERIALIZE */
+               kb.prac_id,
+               o.poczatek_okresu,
+               FLOOR((kb.dzien_mies - o.poczatek_okresu) / 7) AS nr_tygodnia,
+               LISTAGG(
+                   TO_CHAR(kb.dzien_mies, 'dd-mm-yyyy')
+                       || ' '
+                       || TO_CHAR(TRUNC(kb.dzien_mies) + (kb.czas_od - TRUNC(kb.czas_od)), 'HH24:MI'),
+                   ', '
+               ) WITHIN GROUP (ORDER BY kb.dzien_mies)         AS godz_od,
+               LISTAGG(
+                   TO_CHAR(kb.dzien_mies, 'dd-mm-yyyy')
+                       || ' '
+                       || TO_CHAR(TRUNC(kb.dzien_mies) + (kb.czas_do - TRUNC(kb.czas_do)), 'HH24:MI'),
+                   ', '
+               ) WITHIN GROUP (ORDER BY kb.dzien_mies)         AS godz_do
+        FROM kal_base kb
+        JOIN okres o
+             ON  o.prac_id     = kb.prac_id
+             AND kb.dzien_mies >= o.poczatek_okresu
+             AND kb.dzien_mies <= o.koniec_okresu
+        WHERE kb.typ_dnia IS NOT NULL
+          AND kb.dzien_mies BETWEEN DATE '2026-06-01' AND DATE '2026-07-05'
+        GROUP BY
+               kb.prac_id,
+               o.poczatek_okresu,
+               FLOOR((kb.dzien_mies - o.poczatek_okresu) / 7)
     )
 
 SELECT
@@ -419,9 +518,11 @@ SELECT
                LEAST(o.poczatek_okresu + t.nr * 7 + 6, DATE '2026-07-05'),
                'dd-mm-yyyy'
            ) AS "zakres tygodnia",
+       gd.godz_od        AS "godzina od",
+       gd.godz_do        AS "godzina do",
        pa.odejmowanie    AS "odejmowanie",
        pa.suma_roznica_h AS "suma różnic [h]",
-       za.z_zdarzenia    AS "zdarzenia (wtet_id=18)",
+       za.z_zdarzenia    AS "zdarzenia",
        na.n_nadgodziny   AS "zlecone nadgodziny"
 FROM prac_hr p
 JOIN okres o ON o.prac_id = p.prac_id
@@ -442,6 +543,10 @@ LEFT JOIN nadgodziny_agg na
        ON  na.prac_id        = p.prac_id
        AND na.poczatek_okresu = o.poczatek_okresu
        AND na.nr_tygodnia    = t.nr
-WHERE p.nr_ew = '45384948'
-  AND pa.odejmowanie IS NOT NULL
+LEFT JOIN godz_od_do_agg gd
+       ON  gd.prac_id        = p.prac_id
+       AND gd.poczatek_okresu = o.poczatek_okresu
+       AND gd.nr_tygodnia    = t.nr
+WHERE  pa.odejmowanie IS NOT NULL
+--   AND  p.nr_ew = '44109003'
 ORDER BY p.nazwisko, p.imie, o.poczatek_okresu, t.nr;
