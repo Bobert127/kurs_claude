@@ -1,0 +1,740 @@
+{
+  "name": "Formularz Rejestracji na Szkolenie (n8n)",
+  "nodes": [
+    {
+      "id": "5d6e5216-83db-47a6-ad12-f490cea41d61",
+      "name": "Formularz Rejestracji",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        -260,
+        300
+      ],
+      "parameters": {
+        "formTitle": "Formularz Rejestracji na Szkolenie",
+        "formDescription": "Wypełnij formularz, aby zarejestrować się na szkolenie.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Imię i nazwisko",
+              "fieldType": "text",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Email",
+              "fieldType": "email",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Telefon",
+              "fieldType": "text",
+              "requiredField": true,
+              "placeholder": "np. 600100200 lub +48 600 100 200"
+            },
+            {
+              "fieldLabel": "Firma",
+              "fieldType": "text",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "NIP firmy (opcjonalnie)",
+              "fieldType": "text",
+              "requiredField": false
+            },
+            {
+              "fieldLabel": "Termin szkolenia",
+              "fieldType": "dropdown",
+              "requiredField": true,
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "10.08.2026"
+                  },
+                  {
+                    "option": "14.09.2026"
+                  },
+                  {
+                    "option": "12.10.2026"
+                  }
+                ]
+              }
+            },
+            {
+              "fieldLabel": "Zgoda RODO",
+              "fieldType": "checkbox",
+              "requiredField": true
+            }
+          ]
+        },
+        "responseMode": "responseNode",
+        "options": {
+          "formTitle": "Rejestracja na szkolenie"
+        }
+      },
+      "webhookId": "e74f213f-2351-4f54-9081-7d71f8217174"
+    },
+    {
+      "id": "f7e1fd56-3d5d-48a4-8572-2c8c2e57372e",
+      "name": "IF - Waliduj Email",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -20,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "7d20ff79",
+              "leftValue": "={{ $json['Email'] }}",
+              "rightValue": "@",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "id": "16e17fe3",
+              "leftValue": "={{ $json['Email'] }}",
+              "rightValue": ".",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "d321e4e7-90f3-432b-8cc8-d7341ab38181",
+      "name": "Set - Błąd Email",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        560
+      ],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a88f3bec",
+              "name": "status_rejestracji",
+              "type": "string",
+              "value": "BLAD_EMAIL"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "a56cae32-5930-4597-9aa3-63202625ffae",
+      "name": "Code - Buduj HTML Błędu",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        560
+      ],
+      "parameters": {
+        "jsCode": "const email = $json['Email'] || '';\nconst html = `\n<!DOCTYPE html>\n<html lang=\"pl\">\n<head><meta charset=\"UTF-8\"><title>Błąd rejestracji</title>\n<style>\n  body{font-family:Arial,sans-serif;background:#f4f4f4;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;}\n  .card{background:#fff;border-radius:12px;padding:40px;max-width:480px;box-shadow:0 4px 20px rgba(0,0,0,.1);border-top:6px solid #e74c3c;}\n  h1{color:#e74c3c;font-size:22px;}\n  p{color:#333;line-height:1.5;}\n</style></head>\n<body>\n  <div class=\"card\">\n    <h1>⚠️ Błąd rejestracji</h1>\n    <p>Podany adres email <strong>${email}</strong> jest nieprawidłowy.</p>\n    <p>Upewnij się, że adres zawiera znak \"@\" oraz kropkę (np. jan.kowalski@firma.pl) i spróbuj ponownie.</p>\n  </div>\n</body>\n</html>`;\nreturn [{ json: { ...$json, html_response: html } }];"
+      }
+    },
+    {
+      "id": "2268acac-e9a5-4ea1-b820-c8802f78f174",
+      "name": "Respond to Webhook - Błąd",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        660,
+        560
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.html_response }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "7b964307-fcd0-4db1-bf15-9db8f54bfef4",
+      "name": "Set - Generuj ID i Timestamp",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        220
+      ],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "831ce9a7",
+              "name": "id_uczestnika",
+              "type": "string",
+              "value": "={{ 'SZK-' + $now.toFormat('yyyyLL') + '-' + $execution.id }}"
+            },
+            {
+              "id": "72930da7",
+              "name": "timestamp_rejestracji",
+              "type": "string",
+              "value": "={{ $now.setZone('Europe/Warsaw').toFormat('yyyy-LL-dd HH:mm:ss') }}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "300913a2-0943-47fa-8f3a-d77953a2e4fa",
+      "name": "Set - Transformacje Danych",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        440,
+        220
+      ],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "2d0c5fd6",
+              "name": "telefon_sformatowany",
+              "type": "string",
+              "value": "={{ '+48 ' + $json['Telefon'].toString().replace(/\\D/g, '').slice(-9).replace(/(\\d{3})(\\d{3})(\\d{3})/, '$1 $2 $3') }}"
+            },
+            {
+              "id": "605c7e62",
+              "name": "deadline_platnosci",
+              "type": "string",
+              "value": "={{ $now.plus({ days: 7 }).setZone('Europe/Warsaw').toFormat('dd.MM.yyyy') }}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "f8a6c2ac-d8cf-4b16-90ff-dc8edfd6a50b",
+      "name": "Code - Walidacja NIP (opcjonalna)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        220
+      ],
+      "parameters": {
+        "jsCode": "const nip = ($input.first().json['NIP firmy (opcjonalnie)'] || '').toString().replace(/\\D/g, '');\nlet nipValid = null;\nlet nipMessage = '';\nif (nip.length > 0) {\n  if (nip.length !== 10) {\n    nipValid = false;\n    nipMessage = 'NIP musi mieć dokładnie 10 cyfr';\n  } else {\n    const weights = [6, 5, 7, 2, 3, 4, 5, 6, 7];\n    const digits = nip.split('').map(Number);\n    const sum = weights.reduce((acc, w, i) => acc + w * digits[i], 0);\n    const checksum = sum % 11;\n    nipValid = checksum === digits[9];\n    nipMessage = nipValid\n      ? 'NIP poprawny (walidacja formatu, bez sprawdzenia w GUS)'\n      : 'Nieprawidłowa suma kontrolna NIP';\n  }\n}\nreturn [{\n  json: {\n    ...$input.first().json,\n    nip_sformatowany: nip || null,\n    nip_valid: nipValid,\n    nip_message: nipMessage\n  }\n}];"
+      }
+    },
+    {
+      "id": "a08f9141-d37d-49f7-b7e8-244332730cee",
+      "name": "Set - Symulacja Liczby Zapisów",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        880,
+        220
+      ],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "73984735",
+              "name": "zarejestrowani_uczestnicy",
+              "type": "number",
+              "value": 15
+            },
+            {
+              "id": "58dd66ce",
+              "name": "limit_miejsc",
+              "type": "number",
+              "value": 20
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "02f78031-04ee-4084-82ec-d688e4904792",
+      "name": "Code - Oblicz Statystyki (Agregacja)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        220
+      ],
+      "parameters": {
+        "jsCode": "const zarejestrowani = $json.zarejestrowani_uczestnicy;\nconst limit = $json.limit_miejsc;\nconst wolne_miejsca = limit - zarejestrowani - 1; // -1 bo dodajemy bieżące zgłoszenie\nconst procent_wypelnienia = Math.round(((zarejestrowani + 1) / limit) * 100);\nreturn [{\n  json: {\n    ...$json,\n    wolne_miejsca,\n    procent_wypelnienia,\n    ma_wolne_miejsca: wolne_miejsca >= 0\n  }\n}];"
+      }
+    },
+    {
+      "id": "095c2e51-a495-4c27-82cd-1e5b55b358ac",
+      "name": "IF - Sprawdź Limit Miejsc",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1320,
+        220
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "3af59965",
+              "leftValue": "={{ $json.ma_wolne_miejsca }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "a8f56c88-f990-4869-8d32-6cf0d5ae3e83",
+      "name": "Set - Przygotuj Dane Waitlist",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1560,
+        480
+      ],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "d9551dbf",
+              "name": "status_rejestracji",
+              "type": "string",
+              "value": "WAITLIST"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "c3673f7e-8ef7-4ade-aaa0-b90f30a114bc",
+      "name": "Code - Buduj HTML Waitlist",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1780,
+        480
+      ],
+      "parameters": {
+        "jsCode": "const imie = $json['Imię i nazwisko'] || '';\nconst id = $json.id_uczestnika || '';\nconst html = `\n<!DOCTYPE html>\n<html lang=\"pl\">\n<head><meta charset=\"UTF-8\"><title>Lista rezerwowa</title>\n<style>\n  body{font-family:Arial,sans-serif;background:#fff8e1;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;}\n  .card{background:#fff;border-radius:12px;padding:40px;max-width:520px;box-shadow:0 4px 20px rgba(0,0,0,.1);border-top:6px solid #f39c12;}\n  h1{color:#f39c12;}\n  .id{background:#fef5e0;padding:8px 14px;border-radius:6px;font-family:monospace;display:inline-block;}\n</style></head>\n<body>\n  <div class=\"card\">\n    <h1>📋 Zostałeś dodany do listy rezerwowej</h1>\n    <p>Cześć ${imie}, wszystkie miejsca na wybrany termin są aktualnie zajęte.</p>\n    <p>Twój numer zgłoszenia: <span class=\"id\">${id}</span></p>\n    <p>Skontaktujemy się z Tobą, jeśli zwolni się miejsce.</p>\n  </div>\n</body>\n</html>`;\nreturn [{ json: { ...$json, html_response: html } }];"
+      }
+    },
+    {
+      "id": "bdfab003-0e93-4707-89a7-9a802176e306",
+      "name": "Respond to Webhook - Waitlist",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2000,
+        480
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.html_response }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "0f45295d-ecee-4b37-948c-aaa06585021a",
+      "name": "HTTP Request - Generuj PDF (html2pdf.app)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1560,
+        220
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.html2pdf.app/v1/generate",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"html\": \"<html><body style=&quot;font-family:Arial&quot;><h1>Potwierdzenie rejestracji</h1>\" +\n    \"<p><b>ID uczestnika:</b> \" + $json.id_uczestnika + \"</p>\" +\n    \"<p><b>Imię i nazwisko:</b> \" + $json['Imię i nazwisko'] + \"</p>\" +\n    \"<p><b>Firma:</b> \" + $json['Firma'] + \"</p>\" +\n    \"<p><b>Termin szkolenia:</b> \" + $json['Termin szkolenia'] + \"</p>\" +\n    \"<p><b>Deadline płatności:</b> \" + $json.deadline_platnosci + \"</p></body></html>\"\n} }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "html2pdf-x-api-key",
+          "name": "html2pdf.app (X-API-Key)"
+        }
+      },
+      "continueOnFail": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "fdf089d1-1d99-48cf-82d5-d037538db8d9",
+      "name": "Code - PDF do Base64",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1780,
+        220
+      ],
+      "parameters": {
+        "jsCode": "let pdf_base64 = null;\nlet pdf_available = false;\ntry {\n  const bin = $input.first().binary;\n  if (bin && bin.data && bin.data.data) {\n    pdf_base64 = bin.data.data;\n    pdf_available = true;\n  }\n} catch (e) {\n  pdf_available = false;\n}\nreturn [{ json: { ...$input.first().json, pdf_base64, pdf_available } }];"
+      }
+    },
+    {
+      "id": "d1fe4fa4-b0a6-4495-9259-1108dc97394d",
+      "name": "Code - Buduj HTML Potwierdzenia",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        220
+      ],
+      "parameters": {
+        "jsCode": "const d = $json;\nconst nipInfo = d.nip_message ? `<p><strong>NIP:</strong> ${d.nip_sformatowany || '-'} — ${d.nip_message}</p>` : '';\nconst pdfLink = d.pdf_available\n  ? `<a class=\"btn\" href=\"data:application/pdf;base64,${d.pdf_base64}\" download=\"potwierdzenie_${d.id_uczestnika}.pdf\">⬇️ Pobierz potwierdzenie PDF</a>`\n  : `<p style=\"color:#999;\">Nie udało się wygenerować pliku PDF — potwierdzenie zostanie wysłane do Ciebie mailowo.</p>`;\n\nconst html = `\n<!DOCTYPE html>\n<html lang=\"pl\">\n<head>\n<meta charset=\"UTF-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>Potwierdzenie rejestracji</title>\n<style>\n  body{font-family:'Segoe UI',Arial,sans-serif;background:#eef2f7;margin:0;padding:20px;display:flex;justify-content:center;}\n  .card{background:#fff;border-radius:14px;padding:40px;max-width:560px;width:100%;box-shadow:0 6px 24px rgba(0,0,0,.08);border-top:6px solid #27ae60;}\n  h1{color:#27ae60;font-size:24px;margin-top:0;}\n  table{width:100%;border-collapse:collapse;margin:20px 0;}\n  td{padding:8px 0;border-bottom:1px solid #eee;}\n  td.label{color:#777;width:45%;}\n  td.value{font-weight:600;color:#222;}\n  .id-box{background:#eafaf1;color:#1e824c;font-family:monospace;font-size:15px;padding:10px 16px;border-radius:8px;display:inline-block;margin:10px 0;}\n  .steps{background:#f8f9fb;border-radius:10px;padding:20px;margin-top:20px;}\n  .steps h2{font-size:16px;margin-top:0;color:#333;}\n  .steps li{margin-bottom:8px;color:#444;}\n  .btn{display:inline-block;margin-top:16px;background:#27ae60;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;}\n  @media (max-width:480px){.card{padding:24px;}}\n</style>\n</head>\n<body>\n  <div class=\"card\">\n    <h1>✅ Rejestracja zakończona sukcesem!</h1>\n    <p>Dziękujemy, <strong>${d['Imię i nazwisko']}</strong>. Twoje zgłoszenie zostało przyjęte.</p>\n    <div class=\"id-box\">ID uczestnika: ${d.id_uczestnika}</div>\n    <table>\n      <tr><td class=\"label\">Email</td><td class=\"value\">${d['Email']}</td></tr>\n      <tr><td class=\"label\">Telefon</td><td class=\"value\">${d.telefon_sformatowany}</td></tr>\n      <tr><td class=\"label\">Firma</td><td class=\"value\">${d['Firma']}</td></tr>\n      <tr><td class=\"label\">Termin szkolenia</td><td class=\"value\">${d['Termin szkolenia']}</td></tr>\n      <tr><td class=\"label\">Deadline płatności</td><td class=\"value\">${d.deadline_platnosci}</td></tr>\n      <tr><td class=\"label\">Data rejestracji</td><td class=\"value\">${d.timestamp_rejestracji}</td></tr>\n    </table>\n    ${nipInfo}\n    <div class=\"steps\">\n      <h2>📌 Kolejne kroki</h2>\n      <ol>\n        <li>Opłać uczestnictwo w terminie do <strong>${d.deadline_platnosci}</strong>.</li>\n        <li>Zachowaj swój numer ID uczestnika: <strong>${d.id_uczestnika}</strong>.</li>\n        <li>Szczegóły dotyczące lokalizacji / linku otrzymasz mailem na 3 dni przed szkoleniem.</li>\n      </ol>\n      ${pdfLink}\n    </div>\n  </div>\n</body>\n</html>`;\n\nreturn [{ json: { ...d, html_response: html } }];"
+      }
+    },
+    {
+      "id": "a51ec110-efec-4ac2-afd5-5c0960cd3b6b",
+      "name": "Respond to Webhook - Potwierdzenie",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2220,
+        220
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.html_response }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "f6684b47-0ca6-41be-9be3-6029034ff258",
+      "name": "Sticky - 14982d4a",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -260,
+        -80
+      ],
+      "parameters": {
+        "content": "## 🟢 POZIOM PODSTAWOWY\nFormularz Rejestracji → IF Email → generowanie ID i timestampu.\n\nPola formularza: Imię i nazwisko, Email, Telefon, Firma, NIP (opcjonalnie), Termin szkolenia (dropdown), Zgoda RODO (checkbox).\n\n`$execution.id` gwarantuje unikalność ID w formacie `SZK-YYYYMM-<execution.id>`.",
+        "height": 260,
+        "width": 560,
+        "color": 4
+      }
+    },
+    {
+      "id": "92de2d61-c1d8-431a-b375-38b915a73fff",
+      "name": "Sticky - 9e0ba0fa",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        440,
+        -80
+      ],
+      "parameters": {
+        "content": "## 🟡 POZIOM ŚREDNI\nFormatowanie telefonu na `+48 XXX XXX XXX`, wyliczenie deadline'u płatności (+7 dni, strefa Europe/Warsaw), walidacja NIP (suma kontrolna, wagi [6,5,7,2,3,4,5,6,7]) oraz profesjonalny HTML z CSS w odpowiedzi.\n\n⚠️ Walidacja NIP sprawdza tylko **format**, nie weryfikuje istnienia w GUS.",
+        "height": 260,
+        "width": 680,
+        "color": 3
+      }
+    },
+    {
+      "id": "a424b8dd-23b9-4f3d-aca5-ae5faf966b59",
+      "name": "Sticky - b4fc645f",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1320,
+        -80
+      ],
+      "parameters": {
+        "content": "## 🔴 POZIOM ZAAWANSOWANY\nSymulacja limitu miejsc (dane na sztywno — PODMIEŃ na Google Sheets / bazę w produkcji), obliczenie statystyk zapełnienia, przekierowanie na waitlist gdy brak miejsc, generowanie PDF przez zewnętrzne API (html2pdf.app) z obsługą błędu (continueOnFail) i fallbackiem w HTML.",
+        "height": 260,
+        "width": 700,
+        "color": 6
+      }
+    },
+    {
+      "id": "6b37badf-1549-41cf-9ae9-ddec4fcf237f",
+      "name": "Sticky - 7a12da25",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1560,
+        700
+      ],
+      "parameters": {
+        "content": "### ⚠️ DO ZROBIENIA PRZED URUCHOMIENIEM\n1. W węźle **HTTP Request - Generuj PDF** wstaw własny klucz API z html2pdf.app (parametr `apiKey`) lub podłącz inny serwis (pdfshift.io / własny Puppeteer).\n2. Sprawdź w UI, czy opcja odpowiedzi HTTP Request ma ustawione **Response Format: File** (mapowanie z JSON może wymagać ręcznej korekty po imporcie, zależnie od wersji n8n).\n3. W węźle **Set - Symulacja Liczby Zapisów** podmień dane na sztywno na realne (np. odczyt z Google Sheets) gdy przejdziesz do produkcji.",
+        "height": 240,
+        "width": 640,
+        "color": 2
+      }
+    },
+    {
+      "id": "8c518190-5fef-43b4-9c39-8c9a0930bfb7",
+      "name": "Sticky - d8d22cfe",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -260,
+        700
+      ],
+      "parameters": {
+        "content": "### 📄 O odpowiedzi HTML\nTrigger formularza ma ustawiony `responseMode: responseNode` — to węzły **Respond to Webhook** budują ostateczną stronę HTML (nagłówek `Content-Type: text/html`). Dzięki temu można zwrócić w pełni ostylowaną stronę zamiast domyślnego ekranu \"Form submitted\".",
+        "height": 220,
+        "width": 560,
+        "color": 7
+      }
+    }
+  ],
+  "connections": {
+    "Formularz Rejestracji": {
+      "main": [
+        [
+          {
+            "node": "IF - Waliduj Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Waliduj Email": {
+      "main": [
+        [
+          {
+            "node": "Set - Generuj ID i Timestamp",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set - Błąd Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Błąd Email": {
+      "main": [
+        [
+          {
+            "node": "Code - Buduj HTML Błędu",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Buduj HTML Błędu": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook - Błąd",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Generuj ID i Timestamp": {
+      "main": [
+        [
+          {
+            "node": "Set - Transformacje Danych",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Transformacje Danych": {
+      "main": [
+        [
+          {
+            "node": "Code - Walidacja NIP (opcjonalna)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Walidacja NIP (opcjonalna)": {
+      "main": [
+        [
+          {
+            "node": "Set - Symulacja Liczby Zapisów",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Symulacja Liczby Zapisów": {
+      "main": [
+        [
+          {
+            "node": "Code - Oblicz Statystyki (Agregacja)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Oblicz Statystyki (Agregacja)": {
+      "main": [
+        [
+          {
+            "node": "IF - Sprawdź Limit Miejsc",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Sprawdź Limit Miejsc": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Generuj PDF (html2pdf.app)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set - Przygotuj Dane Waitlist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Przygotuj Dane Waitlist": {
+      "main": [
+        [
+          {
+            "node": "Code - Buduj HTML Waitlist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Buduj HTML Waitlist": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook - Waitlist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Generuj PDF (html2pdf.app)": {
+      "main": [
+        [
+          {
+            "node": "Code - PDF do Base64",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - PDF do Base64": {
+      "main": [
+        [
+          {
+            "node": "Code - Buduj HTML Potwierdzenia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Buduj HTML Potwierdzenia": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook - Potwierdzenie",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}
