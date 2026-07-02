@@ -12,7 +12,14 @@
       "Bash(git -C \"C:/!bat/Claude/kurscc\" log --oneline -5)",
       "Bash(git -C \"C:/!bat/Claude/kurscc\" diff hsbc/hsbcsd_dyzuryw_w_czasie_pracy_v2.sql)",
       "Bash(git -C \"C:/!bat/Claude/kurscc\" diff .claude/settings.local.json)",
-      "Bash(git *)"
+      "Bash(git *)",
+      "WebSearch",
+      "WebFetch(domain:docs.n8n.io)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(python -c \"import json;d=json.load\\(open\\('n8n/egzamin/formularz-rejestracji-n8n-workflow.json',encoding='utf-8'\\)\\);t=[n for n in d['nodes'] if n['type']=='n8n-nodes-base.formTrigger'][0];print\\('responseMode =',t['parameters']['responseMode']\\)\")",
+      "Bash(git show *)",
+      "Bash(python -c \"import json;d=json.load\\(open\\('/tmp/chk.json',encoding='utf-8'\\)\\);t=[n for n in d['nodes'] if n['type']=='n8n-nodes-base.formTrigger'][0];print\\('responseMode =',t['parameters']['responseMode']\\);print\\('respondToWebhook =',sum\\(1 for n in d['nodes'] if n['type']=='n8n-nodes-base.respondToWebhook'\\)\\)\")",
+      "Bash(node testpdf.js)"
     ]
   }
 }
