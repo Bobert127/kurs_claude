@@ -521,11 +521,10 @@
     },
     {
       "parameters": {
-        "language": "python",
-        "pythonCode": "import base64\n\n# Fallback: generuj PDF w Pythonie tylko jesli html2pdf go nie dostarczyl\nraw = _input.first().json\ntry:\n    data = raw.to_py()\nexcept AttributeError:\n    data = dict(raw)\n\nif not data.get(\"pdf_available\") or not data.get(\"pdf_base64\"):\n    def g(key):\n        v = data.get(key)\n        return \"\" if v is None else str(v)\n\n    _map = str.maketrans({\n        'ą':'a','ć':'c','ę':'e','ł':'l','ń':'n','ó':'o','ś':'s','ź':'z','ż':'z',\n        'Ą':'A','Ć':'C','Ę':'E','Ł':'L','Ń':'N','Ó':'O','Ś':'S','Ź':'Z','Ż':'Z',\n    })\n    def tr(s):\n        return str(s).translate(_map)\n    def esc(s):\n        return tr(s).replace(\"\\\\\", \"\\\\\\\\\").replace(\"(\", \"\\(\").replace(\")\", \"\\)\")\n\n    fields = [\n        (\"ID uczestnika\", g(\"id_uczestnika\")),\n        (\"Imie i nazwisko\", g(\"Imię i nazwisko\")),\n        (\"Email\", g(\"Email\")),\n        (\"Telefon\", g(\"telefon_sformatowany\")),\n        (\"Firma\", g(\"Firma\")),\n        (\"Termin szkolenia\", g(\"Termin szkolenia\")),\n        (\"Deadline platnosci\", g(\"deadline_platnosci\")),\n        (\"Data rejestracji\", g(\"timestamp_rejestracji\")),\n    ]\n\n    parts = []\n    y = 790\n    parts.append(\"BT /F1 18 Tf 72 %d Td (%s) Tj ET\" % (y, esc(\"Potwierdzenie rejestracji\")))\n    y -= 40\n    for label, val in fields:\n        parts.append(\"BT /F1 12 Tf 72 %d Td (%s) Tj ET\" % (y, esc(label + \": \" + val)))\n        y -= 24\n    content = \"\\n\".join(parts).encode(\"latin-1\", \"replace\")\n\n    objs = [\n        b\"<< /Type /Catalog /Pages 2 0 R >>\",\n        b\"<< /Type /Pages /Kids [3 0 R] /Count 1 >>\",\n        b\"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\",\n        b\"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>\",\n        b\"<< /Length \" + str(len(content)).encode() + b\" >>\\nstream\\n\" + content + b\"\\nendstream\",\n    ]\n    pdf = b\"%PDF-1.4\\n\"\n    offsets = []\n    for i, body in enumerate(objs, start=1):\n        offsets.append(len(pdf))\n        pdf += (\"%d 0 obj\\n\" % i).encode() + body + b\"\\nendobj\\n\"\n    xref_pos = len(pdf)\n    pdf += (\"xref\\n0 %d\\n\" % (len(objs) + 1)).encode()\n    pdf += b\"0000000000 65535 f \\n\"\n    for off in offsets:\n        pdf += (\"%010d 00000 n \\n\" % off).encode()\n    pdf += b\"trailer\\n<< /Size \" + str(len(objs) + 1).encode() + b\" /Root 1 0 R >>\\n\"\n    pdf += b\"startxref\\n\" + str(xref_pos).encode() + b\"\\n%%EOF\"\n\n    data[\"pdf_base64\"] = base64.b64encode(pdf).decode(\"ascii\")\n    data[\"pdf_available\"] = True\n    data[\"pdf_zrodlo\"] = \"python\"\nelse:\n    data[\"pdf_zrodlo\"] = \"html2pdf\"\n\nreturn [{\"json\": data}]\n"
+        "jsCode": "// Fallback: generuj PDF w JavaScript tylko jeśli html2pdf go nie dostarczył\nconst data = { ...$input.first().json };\n\nif (!data.pdf_available || !data.pdf_base64) {\n  const map = {'ą':'a','ć':'c','ę':'e','ł':'l','ń':'n','ó':'o','ś':'s','ź':'z','ż':'z','Ą':'A','Ć':'C','Ę':'E','Ł':'L','Ń':'N','Ó':'O','Ś':'S','Ź':'Z','Ż':'Z'};\n  const tr = (s) => String(s == null ? '' : s).replace(/[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]/g, (ch) => map[ch] || ch);\n  const esc = (s) => tr(s).replace(/\\\\/g, '\\\\\\\\').replace(/\\(/g, '\\\\(').replace(/\\)/g, '\\\\)');\n  const g = (k) => { const v = data[k]; return v == null ? '' : String(v); };\n\n  const fields = [\n    ['ID uczestnika', g('id_uczestnika')],\n    ['Imie i nazwisko', g('Imię i nazwisko')],\n    ['Email', g('Email')],\n    ['Telefon', g('telefon_sformatowany')],\n    ['Firma', g('Firma')],\n    ['Termin szkolenia', g('Termin szkolenia')],\n    ['Deadline platnosci', g('deadline_platnosci')],\n    ['Data rejestracji', g('timestamp_rejestracji')],\n  ];\n\n  const parts = [];\n  let y = 790;\n  parts.push(`BT /F1 18 Tf 72 ${y} Td (${esc('Potwierdzenie rejestracji')}) Tj ET`);\n  y -= 40;\n  for (const [label, val] of fields) {\n    parts.push(`BT /F1 12 Tf 72 ${y} Td (${esc(label + ': ' + val)}) Tj ET`);\n    y -= 24;\n  }\n  const content = Buffer.from(parts.join('\\n'), 'latin1');\n\n  const objs = [\n    Buffer.from('<< /Type /Catalog /Pages 2 0 R >>', 'latin1'),\n    Buffer.from('<< /Type /Pages /Kids [3 0 R] /Count 1 >>', 'latin1'),\n    Buffer.from('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>', 'latin1'),\n    Buffer.from('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>', 'latin1'),\n    Buffer.concat([Buffer.from(`<< /Length ${content.length} >>\\nstream\\n`, 'latin1'), content, Buffer.from('\\nendstream', 'latin1')]),\n  ];\n\n  let pdf = Buffer.from('%PDF-1.4\\n', 'latin1');\n  const offsets = [];\n  for (let i = 0; i < objs.length; i++) {\n    offsets.push(pdf.length);\n    pdf = Buffer.concat([pdf, Buffer.from(`${i + 1} 0 obj\\n`, 'latin1'), objs[i], Buffer.from('\\nendobj\\n', 'latin1')]);\n  }\n  const xrefPos = pdf.length;\n  let xref = `xref\\n0 ${objs.length + 1}\\n0000000000 65535 f \\n`;\n  for (const off of offsets) {\n    xref += String(off).padStart(10, '0') + ' 00000 n \\n';\n  }\n  const trailer = `trailer\\n<< /Size ${objs.length + 1} /Root 1 0 R >>\\nstartxref\\n${xrefPos}\\n%%EOF`;\n  pdf = Buffer.concat([pdf, Buffer.from(xref, 'latin1'), Buffer.from(trailer, 'latin1')]);\n\n  data.pdf_base64 = pdf.toString('base64');\n  data.pdf_available = true;\n  data.pdf_zrodlo = 'javascript';\n} else {\n  data.pdf_zrodlo = 'html2pdf';\n}\n\nreturn [{ json: data }];\n"
       },
       "id": "df6b41fb-36c6-497d-9773-8730d204e03e",
-      "name": "Code - PDF Fallback (Python)",
+      "name": "Code - PDF Fallback (JS)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
@@ -699,7 +698,7 @@
       "main": [
         [
           {
-            "node": "Code - PDF Fallback (Python)",
+            "node": "Code - PDF Fallback (JS)",
             "type": "main",
             "index": 0
           }
@@ -717,7 +716,7 @@
         ]
       ]
     },
-    "Code - PDF Fallback (Python)": {
+    "Code - PDF Fallback (JS)": {
       "main": [
         [
           {
