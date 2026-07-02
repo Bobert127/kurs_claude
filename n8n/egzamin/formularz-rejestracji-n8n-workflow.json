@@ -411,7 +411,7 @@
         220
       ],
       "parameters": {
-        "jsCode": "let pdf_base64 = null;\nlet pdf_available = false;\ntry {\n  const bin = $input.first().binary;\n  if (bin && bin.data && bin.data.data) {\n    pdf_base64 = bin.data.data;\n    pdf_available = true;\n  }\n} catch (e) {\n  pdf_available = false;\n}\nreturn [{ json: { ...$input.first().json, pdf_base64, pdf_available } }];"
+        "jsCode": "let pdf_base64 = null;\nlet pdf_available = false;\ntry {\n  const bin = $input.first().binary;\n  if (bin && bin.data && bin.data.data) {\n    pdf_base64 = bin.data.data;\n    pdf_available = true;\n  }\n} catch (e) {\n  pdf_available = false;\n}\nconst data = $('Code - Oblicz Statystyki (Agregacja)').item.json;\nreturn [{ json: { ...data, pdf_base64, pdf_available } }];"
       }
     },
     {
