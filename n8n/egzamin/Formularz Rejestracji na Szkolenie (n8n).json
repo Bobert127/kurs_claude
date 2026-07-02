@@ -125,7 +125,8 @@
             }
           ]
         },
-        "options": {}
+        "options": {},
+        "includeOtherFields": true
       },
       "id": "2bac04f5-fd6f-46f1-82e9-e2c640337409",
       "name": "Set - Błąd Email",
@@ -183,7 +184,8 @@
             }
           ]
         },
-        "options": {}
+        "options": {},
+        "includeOtherFields": true
       },
       "id": "817cc087-ba1c-44b6-9879-aed641d6e40d",
       "name": "Set - Generuj ID i Timestamp",
@@ -212,7 +214,8 @@
             }
           ]
         },
-        "options": {}
+        "options": {},
+        "includeOtherFields": true
       },
       "id": "e9a6c067-2b10-4daa-a937-f9fdd1d264e8",
       "name": "Set - Transformacje Danych",
@@ -254,7 +257,8 @@
             }
           ]
         },
-        "options": {}
+        "options": {},
+        "includeOtherFields": true
       },
       "id": "25207125-e76e-424d-92c1-505f6aa11440",
       "name": "Set - Symulacja Liczby Zapisów",
@@ -324,7 +328,8 @@
             }
           ]
         },
-        "options": {}
+        "options": {},
+        "includeOtherFields": true
       },
       "id": "818bc665-240e-4f8a-8451-f5fb3f2271e6",
       "name": "Set - Przygotuj Dane Waitlist",
