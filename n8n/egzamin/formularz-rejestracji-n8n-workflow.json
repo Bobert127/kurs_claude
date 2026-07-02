@@ -66,7 +66,7 @@
             }
           ]
         },
-        "responseMode": "responseNode",
+        "responseMode": "lastNode",
         "options": {
           "formTitle": "Rejestracja na szkolenie"
         }
@@ -517,7 +517,7 @@
         700
       ],
       "parameters": {
-        "content": "### 📄 O odpowiedzi HTML\nTrigger formularza ma ustawiony `responseMode: responseNode` — odpowiedź budują węzły **n8n Form** (Form Ending) w trybie `respondWith: showText`, gdzie w polu `responseText` wstawiamy gotowy HTML. Dzięki temu można zwrócić w pełni ostylowaną stronę zamiast domyślnego ekranu \"Form submitted\".\n\n⚠️ Węzeł **Respond to Webhook** NIE działa z Form Trigger — trzeba użyć węzła Form (Completion).",
+        "content": "### 📄 O odpowiedzi HTML\nTrigger formularza ma ustawiony `responseMode: lastNode` (Respond When = Workflow Finishes) — odpowiedź budują węzły **n8n Form** (Form Ending) w trybie `respondWith: showText`, gdzie w polu `responseText` wstawiamy gotowy HTML. Dzięki temu można zwrócić w pełni ostylowaną stronę zamiast domyślnego ekranu \"Form submitted\".\n\n⚠️ Węzeł **Respond to Webhook** NIE działa z Form Trigger — trzeba użyć węzła Form (Completion).",
         "height": 220,
         "width": 560,
         "color": 7
