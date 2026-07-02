@@ -152,26 +152,18 @@
     },
     {
       "id": "2268acac-e9a5-4ea1-b820-c8802f78f174",
-      "name": "Respond to Webhook - Błąd",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.1,
+      "name": "Form - Odpowiedź Błąd",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 1,
       "position": [
         660,
         560
       ],
       "parameters": {
-        "respondWith": "text",
-        "responseBody": "={{ $json.html_response }}",
-        "options": {
-          "responseHeaders": {
-            "entries": [
-              {
-                "name": "Content-Type",
-                "value": "text/html; charset=utf-8"
-              }
-            ]
-          }
-        }
+        "operation": "completion",
+        "respondWith": "showText",
+        "responseText": "={{ $json.html_response }}",
+        "options": {}
       }
     },
     {
@@ -361,26 +353,18 @@
     },
     {
       "id": "bdfab003-0e93-4707-89a7-9a802176e306",
-      "name": "Respond to Webhook - Waitlist",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.1,
+      "name": "Form - Odpowiedź Waitlist",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 1,
       "position": [
         2000,
         480
       ],
       "parameters": {
-        "respondWith": "text",
-        "responseBody": "={{ $json.html_response }}",
-        "options": {
-          "responseHeaders": {
-            "entries": [
-              {
-                "name": "Content-Type",
-                "value": "text/html; charset=utf-8"
-              }
-            ]
-          }
-        }
+        "operation": "completion",
+        "respondWith": "showText",
+        "responseText": "={{ $json.html_response }}",
+        "options": {}
       }
     },
     {
@@ -445,26 +429,18 @@
     },
     {
       "id": "a51ec110-efec-4ac2-afd5-5c0960cd3b6b",
-      "name": "Respond to Webhook - Potwierdzenie",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.1,
+      "name": "Form - Odpowiedź Potwierdzenie",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 1,
       "position": [
         2220,
         220
       ],
       "parameters": {
-        "respondWith": "text",
-        "responseBody": "={{ $json.html_response }}",
-        "options": {
-          "responseHeaders": {
-            "entries": [
-              {
-                "name": "Content-Type",
-                "value": "text/html; charset=utf-8"
-              }
-            ]
-          }
-        }
+        "operation": "completion",
+        "respondWith": "showText",
+        "responseText": "={{ $json.html_response }}",
+        "options": {}
       }
     },
     {
@@ -541,7 +517,7 @@
         700
       ],
       "parameters": {
-        "content": "### 📄 O odpowiedzi HTML\nTrigger formularza ma ustawiony `responseMode: responseNode` — to węzły **Respond to Webhook** budują ostateczną stronę HTML (nagłówek `Content-Type: text/html`). Dzięki temu można zwrócić w pełni ostylowaną stronę zamiast domyślnego ekranu \"Form submitted\".",
+        "content": "### 📄 O odpowiedzi HTML\nTrigger formularza ma ustawiony `responseMode: responseNode` — odpowiedź budują węzły **n8n Form** (Form Ending) w trybie `respondWith: showText`, gdzie w polu `responseText` wstawiamy gotowy HTML. Dzięki temu można zwrócić w pełni ostylowaną stronę zamiast domyślnego ekranu \"Form submitted\".\n\n⚠️ Węzeł **Respond to Webhook** NIE działa z Form Trigger — trzeba użyć węzła Form (Completion).",
         "height": 220,
         "width": 560,
         "color": 7
@@ -593,7 +569,7 @@
       "main": [
         [
           {
-            "node": "Respond to Webhook - Błąd",
+            "node": "Form - Odpowiedź Błąd",
             "type": "main",
             "index": 0
           }
@@ -688,7 +664,7 @@
       "main": [
         [
           {
-            "node": "Respond to Webhook - Waitlist",
+            "node": "Form - Odpowiedź Waitlist",
             "type": "main",
             "index": 0
           }
@@ -721,7 +697,7 @@
       "main": [
         [
           {
-            "node": "Respond to Webhook - Potwierdzenie",
+            "node": "Form - Odpowiedź Potwierdzenie",
             "type": "main",
             "index": 0
           }
