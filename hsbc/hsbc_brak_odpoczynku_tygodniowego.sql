@@ -559,25 +559,24 @@ ORDER BY p.nazwisko, p.imie, o.poczatek_okresu, t.nr;
 -- po nazwisku i imieniu wg polskiej kolejnosci (NLSSORT POLISH).
 -- =====================================================================
 
--- Nazwy kolumn wynikowych
-SELECT 'lp'                                    AS lp,
-       'imie'                                  AS imie,
-       'nazwisko'                              AS nazwisko,
-       'nr_ew'                                 AS nr_ew,
-       'nr_karty'                              AS nr_karty,
-       'jednostka_organizacyjna'               AS jednostka_organizacyjna,
-       'mpk'                                   AS mpk,
-       'stanowisko'                            AS stanowisko,
-       'okres_rozliczeniowy'                   AS okres_rozliczeniowy,
-       'pierwszy_dzien_okresu_rozliczeniowego' AS pierwszy_dzien_okresu_rozliczeniowego,
-       'pierwszy_dzien_tygodnia'               AS pierwszy_dzien_tygodnia,
-       'zakres_tygodnia'                       AS zakres_tygodnia,
-       'odejmowanie'                           AS odejmowanie,
-       'suma_roznic_h'                         AS suma_roznic_h,
-       'zdarzenia_wtet_id_18'                  AS zdarzenia_wtet_id_18,
-       'zlecone_nadgodziny'                    AS zlecone_nadgodziny
-FROM dual;
-
+-- Nazwy kolumn wynikowych w naglowku, dane z podzapytania (bez dual)
+SELECT lp,
+       imie,
+       nazwisko,
+       nr_ew,
+       nr_karty,
+       jednostka_organizacyjna,
+       mpk,
+       stanowisko,
+       okres_rozliczeniowy,
+       pierwszy_dzien_okresu_rozliczeniowego,
+       pierwszy_dzien_tygodnia,
+       zakres_tygodnia,
+       odejmowanie,
+       suma_roznic_h,
+       zdarzenia_wtet_id_18,
+       zlecone_nadgodziny
+FROM (
 WITH
     kalendarze AS (
         SELECT /*+ MATERIALIZE */
@@ -844,4 +843,5 @@ LEFT JOIN nadgodziny_agg na
        AND na.nr_tygodnia    = t.nr
 WHERE  pa.odejmowanie IS NOT NULL
   AND  p.nr_ew = '44109003'
-ORDER BY p.nazwisko, p.imie, o.poczatek_okresu, t.nr;
+ORDER BY p.nazwisko, p.imie, o.poczatek_okresu, t.nr
+);
