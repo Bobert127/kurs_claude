@@ -1,0 +1,10 @@
+# Dane osobowe / dokumenty
+CV_*.docx
+*.docx
+
+# Pliki Excel (dane robocze, backupy)
+*.xlsx
+*.xls
+
+# Lokalna konfiguracja Claude Code
+.claude/settings.local.json
