@@ -783,26 +783,26 @@ SELECT
        p.nazwisko,
        p.nr_ew,
        p.nr_karty,
-       p.jednostka_org AS "jednostka_organizacyjna",
+       p.jednostka_org AS jednostka_organizacyjna,
        p.mpk,
        p.stanowisko,
        CASE o.dlugosc
            WHEN 1 THEN '1 - miesięczny okres rozliczeniowy'
            WHEN 3 THEN '3 - miesięczny okres rozliczeniowy'
-       END AS "okres_rozliczeniowy",
+       END AS okres_rozliczeniowy,
        TO_CHAR(o.poczatek_okresu, 'dd-mm-yyyy')
-           AS "pierwszy_dzien_okresu_rozliczeniowego",
+           AS pierwszy_dzien_okresu_rozliczeniowego,
        TO_CHAR(o.poczatek_okresu + t.nr * 7, 'dd-mm-yyyy')
-           AS "pierwszy_dzien_tygodnia",
+           AS pierwszy_dzien_tygodnia,
        'od ' || TO_CHAR(o.poczatek_okresu + t.nr * 7, 'dd-mm-yyyy')
            || ' do ' || TO_CHAR(
                LEAST(o.poczatek_okresu + t.nr * 7 + 6, DATE '2026-07-05'),
                'dd-mm-yyyy'
-           ) AS "zakres_tygodnia",
-       pa.odejmowanie    AS "odejmowanie",
-       pa.suma_roznica_h AS "suma_roznic_[h]",
-       za.z_zdarzenia    AS "zdarzenia_(wtet_id=18)",
-       na.n_nadgodziny   AS "zlecone_nadgodziny"
+           ) AS zakres_tygodnia,
+       pa.odejmowanie    AS odejmowanie,
+       pa.suma_roznica_h AS suma_roznic_h,
+       za.z_zdarzenia    AS zdarzenia_wtet_id_18,
+       na.n_nadgodziny   AS zlecone_nadgodziny
 FROM prac_hr p
 JOIN okres o ON o.prac_id = p.prac_id
 JOIN (
