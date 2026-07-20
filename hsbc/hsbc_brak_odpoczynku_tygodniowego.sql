@@ -558,6 +558,26 @@ ORDER BY p.nazwisko, p.imie, o.poczatek_okresu, t.nr;
 -- Dodano kolumne lp (numer porzadkowy) - ROW_NUMBER() z sortowaniem
 -- po nazwisku i imieniu wg polskiej kolejnosci (NLSSORT POLISH).
 -- =====================================================================
+
+-- Nazwy kolumn wynikowych
+SELECT 'lp'                                    AS lp,
+       'imie'                                  AS imie,
+       'nazwisko'                              AS nazwisko,
+       'nr_ew'                                 AS nr_ew,
+       'nr_karty'                              AS nr_karty,
+       'jednostka_organizacyjna'               AS jednostka_organizacyjna,
+       'mpk'                                   AS mpk,
+       'stanowisko'                            AS stanowisko,
+       'okres_rozliczeniowy'                   AS okres_rozliczeniowy,
+       'pierwszy_dzien_okresu_rozliczeniowego' AS pierwszy_dzien_okresu_rozliczeniowego,
+       'pierwszy_dzien_tygodnia'               AS pierwszy_dzien_tygodnia,
+       'zakres_tygodnia'                       AS zakres_tygodnia,
+       'odejmowanie'                           AS odejmowanie,
+       'suma_roznic_h'                         AS suma_roznic_h,
+       'zdarzenia_wtet_id_18'                  AS zdarzenia_wtet_id_18,
+       'zlecone_nadgodziny'                    AS zlecone_nadgodziny
+FROM dual;
+
 WITH
     kalendarze AS (
         SELECT /*+ MATERIALIZE */
