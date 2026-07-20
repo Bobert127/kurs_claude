@@ -721,9 +721,9 @@ WITH
         SELECT /*+ MATERIALIZE */
                prac_id,
                d1,
-               TO_CHAR(k_po_dt,    'dd-mm-yyyy HH24:MI')
+               TO_CHAR(k_przed_dt, 'dd-mm-yyyy HH24:MI')
                    || ' - '
-                   || TO_CHAR(k_przed_dt, 'dd-mm-yyyy HH24:MI') AS odejmowanie,
+                   || TO_CHAR(k_po_dt,    'dd-mm-yyyy HH24:MI') AS odejmowanie,
                ROUND(
                    GREATEST(
                        (k_po_dt - k_przed_dt) * 24,
