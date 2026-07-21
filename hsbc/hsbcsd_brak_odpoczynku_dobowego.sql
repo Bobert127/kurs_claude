@@ -284,162 +284,155 @@ WHERE k.dzien_mies BETWEEN '26/06/01' AND '26/07/01'
 ORDER BY p.nazwisko, p.imie, k.dzien_mies;
 
 
--- Wersja 4 - obudowanie zewnętrznym SELECT z nazwami kolumn w nagłówku
-SELECT
-    imie,
-    nazwisko,
-    numer_ewidencyjny,
-    nr_karty,
-    dzien_miesiaca,
-    poczatek_pracy,
-    koniec_pracy,
-    poczatek_pierwszego_zlecenia,
-    poczatek_zlecenia,
-    koniec_zlecenia,
-    ilosc_zlecen,
-    poczatek_dyzuru,
-    koniec_dyzuru,
-    ilosc_dyzurow,
-    odpoczynek_z_uwzglednieniem_dyzuru,
-    poczatek_pracy_nastepny_dzien,
-    nastepny_dzien,
-    rodzaj_dnia_nastepnego,
-    godziny_odpoczynku,
-    czy_zachowano_odpoczynek_dobowy
-FROM (
-WITH kalendarz AS (
-    SELECT
-        k.prac_id,
-        k.id,
-        k.dzien_mies,
-        k.czas_od,
-        k.czas_do,
-        k.typ_dnia,
-        LEAD(k.czas_od)    OVER (PARTITION BY k.prac_id ORDER BY k.dzien_mies) AS next_czas_od,
-        LEAD(k.dzien_mies) OVER (PARTITION BY k.prac_id ORDER BY k.dzien_mies) AS next_dzien_mies,
-        LEAD(k.typ_dnia)   OVER (PARTITION BY k.prac_id ORDER BY k.dzien_mies) AS next_typ_dnia
-    FROM NT_KP_KDR_KALENDARZE_PRAC k
-    WHERE k.DZIEN_MIES BETWEEN '26/06/01' AND '26/07/01'
-),
-z_ostatni AS (
-    SELECT
-        z.*,
-        ROW_NUMBER()  OVER (PARTITION BY z.prac_id, z.kali_id ORDER BY z.godz_do DESC)        AS rn,
-        COUNT(z.id)   OVER (PARTITION BY z.prac_id, z.kali_id)                                 AS ile_zlecen,
-        FIRST_VALUE(z.godz_od) OVER (PARTITION BY z.prac_id, z.kali_id ORDER BY z.godz_od ASC) AS pierwsze_godz_od
-    FROM KP_RCP_ZLEC_NADG_PRAC z
-),
-zdarzenia AS (
-    SELECT
-        zd.prac_id,
-        zd.workday_date,
-        zd.date_time_from,
-        zd.date_time_to,
-        ROW_NUMBER() OVER (PARTITION BY zd.prac_id, TRUNC(zd.workday_date) ORDER BY zd.date_time_to DESC) AS rn_zd,
-        COUNT(*)     OVER (PARTITION BY zd.prac_id, TRUNC(zd.workday_date))                               AS ile_zdarzen
-    FROM KP_RCP_WORK_TIME_EVENTS zd
-    WHERE zd.wtet_id = 18
-      AND zd.workday_date BETWEEN '26/06/01' AND '26/07/01'
-)
-SELECT
-    p.imie,
-    p.nazwisko,
-    p.nr_ew                                          AS numer_ewidencyjny,
-    p.nr_karty                                       AS nr_karty,
-    TO_CHAR(k.dzien_mies,       'DD-MM-YYYY')        AS dzien_miesiaca,
-    TO_CHAR(k.czas_od,          'HH24:MI')           AS poczatek_pracy,
-    TO_CHAR(k.czas_do,          'HH24:MI')           AS koniec_pracy,
-    TO_CHAR(z.pierwsze_godz_od, 'HH24:MI')           AS poczatek_pierwszego_zlecenia,
-    TO_CHAR(z.godz_od,          'HH24:MI')           AS poczatek_zlecenia,
-    TO_CHAR(z.godz_do,          'HH24:MI')           AS koniec_zlecenia,
-    z.ile_zlecen                                     AS ilosc_zlecen,
-    TO_CHAR(zd.date_time_from,  'HH24:MI')           AS poczatek_dyzuru,
-    TO_CHAR(zd.date_time_to,    'HH24:MI')           AS koniec_dyzuru,
-    zd.ile_zdarzen                                   AS ilosc_dyzurow,
-    CASE
-        WHEN k.next_typ_dnia IS NOT NULL
-            THEN 16
-        WHEN k.next_czas_od IS NULL
-            THEN NULL
-        WHEN zd.date_time_to IS NOT NULL
-             AND zd.date_time_to >= (TRUNC(k.dzien_mies) + (k.czas_do - TRUNC(k.czas_do)))
-             AND (   z.godz_od IS NULL
-                  OR (z.godz_od - TRUNC(z.godz_od)) < (k.czas_do - TRUNC(k.czas_do))
-                  OR zd.date_time_to >= (TRUNC(k.dzien_mies) + (z.godz_do - TRUNC(z.godz_do))))
-            THEN ROUND(((TRUNC(k.next_dzien_mies) + (k.next_czas_od - TRUNC(k.next_czas_od)))
-                        - zd.date_time_to) * 24, 2)
-        WHEN z.godz_od IS NOT NULL
-             AND (z.godz_od - TRUNC(z.godz_od)) >= (k.czas_do - TRUNC(k.czas_do))
-            THEN ROUND(((TRUNC(k.next_dzien_mies) + (k.next_czas_od - TRUNC(k.next_czas_od)))
-                        - (TRUNC(k.dzien_mies) + (z.godz_do - TRUNC(z.godz_do)))) * 24, 2)
-        ELSE
-            ROUND(((TRUNC(k.next_dzien_mies) + (k.next_czas_od - TRUNC(k.next_czas_od)))
-                   - (TRUNC(k.dzien_mies) + (k.czas_do - TRUNC(k.czas_do)))) * 24, 2)
-    END AS odpoczynek_z_uwzglednieniem_dyzuru,
-    TO_CHAR(k.next_czas_od,    'HH24:MI')            AS poczatek_pracy_nastepny_dzien,
-    TO_CHAR(k.next_dzien_mies, 'DD-MM-YYYY')         AS nastepny_dzien,
-    CASE k.next_typ_dnia
-        WHEN 'N'  THEN 'Niedziela'
-        WHEN 'S'  THEN 'Święto'
-        WHEN 'WN' THEN 'Wolne za niedzielę'
-        WHEN 'WS' THEN 'Wolne za święto'
-        WHEN 'SO' THEN 'Wolne za niedzielę i święto'
-        WHEN 'C'  THEN 'Wolne harmonogramowo'
-        WHEN 'W'  THEN 'Dzień wolny'
-        WHEN 'R'  THEN 'Dzień roboczy'
-        ELSE k.next_typ_dnia
-    END AS rodzaj_dnia_nastepnego,
-    CASE
-        WHEN k.next_typ_dnia IS NOT NULL
-            THEN 16
-        WHEN k.next_czas_od IS NULL
-            THEN NULL
-        WHEN zd.date_time_to IS NOT NULL
-             AND zd.date_time_to >= (TRUNC(k.dzien_mies) + (k.czas_do - TRUNC(k.czas_do)))
-             AND (   z.godz_od IS NULL
-                  OR (z.godz_od - TRUNC(z.godz_od)) < (k.czas_do - TRUNC(k.czas_do))
-                  OR zd.date_time_to >= (TRUNC(k.dzien_mies) + (z.godz_do - TRUNC(z.godz_do))))
-            THEN ROUND(((TRUNC(k.next_dzien_mies) + (k.next_czas_od - TRUNC(k.next_czas_od)))
-                        - zd.date_time_to) * 24, 2)
-        WHEN z.godz_od IS NOT NULL
-             AND (z.godz_od - TRUNC(z.godz_od)) >= (k.czas_do - TRUNC(k.czas_do))
-            THEN ROUND(((TRUNC(k.next_dzien_mies) + (k.next_czas_od - TRUNC(k.next_czas_od)))
-                        - (TRUNC(k.dzien_mies) + (z.godz_do - TRUNC(z.godz_do)))) * 24, 2)
-        ELSE
-            ROUND(((TRUNC(k.next_dzien_mies) + (k.next_czas_od - TRUNC(k.next_czas_od)))
-                   - (TRUNC(k.dzien_mies) + (k.czas_do - TRUNC(k.czas_do)))) * 24, 2)
-    END AS godziny_odpoczynku,
-    CASE
-        WHEN k.next_typ_dnia IS NOT NULL
-            THEN 'OK - następny dzień wolny'
-        WHEN k.next_czas_od IS NULL
-            THEN 'BRAK NASTĘPNEJ ZMIANY'
-        WHEN zd.date_time_to IS NOT NULL
-             AND zd.date_time_to >= (TRUNC(k.dzien_mies) + (k.czas_do - TRUNC(k.czas_do)))
-             AND (   z.godz_od IS NULL
-                  OR (z.godz_od - TRUNC(z.godz_od)) < (k.czas_do - TRUNC(k.czas_do))
-                  OR zd.date_time_to >= (TRUNC(k.dzien_mies) + (z.godz_do - TRUNC(z.godz_do))))
-             AND ((TRUNC(k.next_dzien_mies) + (k.next_czas_od - TRUNC(k.next_czas_od)))
-                  - zd.date_time_to) * 24 < 11
-            THEN 'NARUSZENIE - koniec dyżuru < 11h do następnej zmiany'
-        WHEN z.godz_od IS NOT NULL
-             AND (z.godz_od - TRUNC(z.godz_od)) >= (k.czas_do - TRUNC(k.czas_do))
-             AND ((TRUNC(k.next_dzien_mies) + (k.next_czas_od - TRUNC(k.next_czas_od)))
-                  - (TRUNC(k.dzien_mies) + (z.godz_do - TRUNC(z.godz_do)))) * 24 < 11
-            THEN 'NARUSZENIE - koniec nadgodzin < 11h do następnej zmiany'
-        WHEN (z.godz_od IS NULL OR (z.godz_od - TRUNC(z.godz_od)) < (k.czas_do - TRUNC(k.czas_do)))
-             AND ((TRUNC(k.next_dzien_mies) + (k.next_czas_od - TRUNC(k.next_czas_od)))
-                  - (TRUNC(k.dzien_mies) + (k.czas_do - TRUNC(k.czas_do)))) * 24 < 11
-            THEN 'NARUSZENIE - koniec zmiany < 11h do następnej zmiany'
-        ELSE 'OK'
-    END AS czy_zachowano_odpoczynek_dobowy
-FROM t_prac p
-JOIN  kalendarz k  ON p.prac_id = k.prac_id
-LEFT JOIN z_ostatni z  ON z.prac_id = k.prac_id AND k.id = z.kali_id AND z.rn = 1
-LEFT JOIN zdarzenia zd ON zd.prac_id = p.prac_id
-                       AND TRUNC(zd.workday_date) = TRUNC(k.dzien_mies)
-                       AND zd.rn_zd = 1
-WHERE k.dzien_mies BETWEEN '26/06/01' AND '26/07/01'
-  AND p.nr_ew = '43996156'
-  AND k.typ_dnia IS NULL
-ORDER BY p.nazwisko, p.imie, k.dzien_mies);
+-- Wersja 4 - norma tygodniowa: CZAS_NOM z kalendarza + nadgodziny w rozbiciu na tygodnie
+WITH
+        kalendarze AS (
+            SELECT /*+ MATERIALIZE */
+                   k.prac_id, k.dzien_mies
+            FROM NT_KP_KDR_KALENDARZE_PRAC k
+            WHERE k.TYP_DNIA = 'W'
+              AND k.DZIEN_MIES BETWEEN DATE '2026-01-01' AND DATE '2026-04-06'
+        ),
+        prac_hr AS (
+            SELECT /*+ MATERIALIZE */
+                   p.prac_id, p.imie, p.nazwisko, p.nr_ew, p.nr_karty,
+                   LEAST(NVL(p.data_rozw, DATE '2026-04-06'), DATE '2026-04-06') AS data_ref, akt_dane.j_org(p.prac_id, LEAST(NVL(p.data_rozw, DATE '2026-04-06'), DATE '2026-04-06')) AS jednostka_org,
+                   akt_dane.mpk(p.prac_id, LEAST(NVL(p.data_rozw, DATE '2026-04-06'), DATE '2026-04-06')) AS mpk,
+                   akt_dane.stanowisko(p.prac_id, LEAST(NVL(p.data_rozw, DATE '2026-04-06'), DATE '2026-04-06')) AS stanowisko
+            FROM t_prac p
+            WHERE p.prac_id IN (SELECT prac_id FROM kalendarze)
+        ),
+        system_pracy AS (
+            SELECT /*+ MATERIALIZE */
+                   ph.prac_id, b.dlugosc
+            FROM prac_hr ph
+            JOIN KP_RCP_WORKING_TIME_SYSTEMS scz
+                 ON scz.code = akt_dane.work_time_system(ph.prac_id, DATE '2026-04-06')
+            JOIN KP_RCP_OKRESY_BILANSU b ON b.id = scz.rcok_id
+        ),
+        okres AS (
+            SELECT /*+ MATERIALIZE */
+                   k.prac_id, sp.dlugosc,
+                   CASE
+                       WHEN sp.dlugosc = 1 THEN TRUNC(k.dzien_mies, 'MM')
+                       WHEN sp.dlugosc = 3 THEN TRUNC(k.dzien_mies, 'Q')
+                   END AS poczatek_okresu,
+                   CASE
+                       WHEN sp.dlugosc = 1 THEN LAST_DAY(k.dzien_mies)
+                       WHEN sp.dlugosc = 3 THEN LAST_DAY(ADD_MONTHS(TRUNC(k.dzien_mies, 'Q'), 2))
+                   END AS koniec_okresu
+            FROM kalendarze k
+            JOIN system_pracy sp ON sp.prac_id = k.prac_id
+            GROUP BY
+                   k.prac_id, sp.dlugosc,
+                   CASE
+                       WHEN sp.dlugosc = 1 THEN TRUNC(k.dzien_mies, 'MM')
+                       WHEN sp.dlugosc = 3 THEN TRUNC(k.dzien_mies, 'Q')
+                   END,
+                   CASE
+                       WHEN sp.dlugosc = 1 THEN LAST_DAY(k.dzien_mies)
+                       WHEN sp.dlugosc = 3 THEN LAST_DAY(ADD_MONTHS(TRUNC(k.dzien_mies, 'Q'), 2))
+                   END
+        ),
+        kal_base AS (
+            SELECT /*+ MATERIALIZE */
+                   prac_id, dzien_mies, czas_nom
+            FROM NT_KP_KDR_KALENDARZE_PRAC
+            WHERE dzien_mies BETWEEN DATE '2026-01-01' AND DATE '2026-04-06'
+              AND prac_id IN (SELECT prac_id FROM kalendarze)
+              AND czas_nom IS NOT NULL
+        ),
+        nadgodziny AS (
+            SELECT /*+ MATERIALIZE */
+                   n.prac_id,
+                   n.data,
+                   n.czas
+            FROM KP_RCP_ZLEC_NADG_PRAC n
+            WHERE n.prac_id IN (SELECT prac_id FROM prac_hr)
+              AND n.data BETWEEN DATE '2026-01-01' AND DATE '2026-04-06'
+        ),
+        nadg_tydz AS (
+            SELECT /*+ MATERIALIZE */
+                   n.prac_id,
+                   o.poczatek_okresu,
+                   FLOOR((n.data - o.poczatek_okresu) / 7) AS nr_tygodnia,
+                   SUM(n.czas)                              AS suma_czas_nadg
+            FROM nadgodziny n
+            JOIN okres o
+                 ON  o.prac_id = n.prac_id
+                 AND n.data   >= o.poczatek_okresu
+                 AND n.data   <= o.koniec_okresu
+            GROUP BY
+                   n.prac_id,
+                   o.poczatek_okresu,
+                   FLOOR((n.data - o.poczatek_okresu) / 7)
+        ),
+        czas_nom_agg AS (
+            SELECT /*+ MATERIALIZE */
+                   kb.prac_id,
+                   o.poczatek_okresu,
+                   o.koniec_okresu,
+                   FLOOR((kb.dzien_mies - o.poczatek_okresu) / 7)  AS nr_tygodnia,
+                   ROUND(SUM(kb.czas_nom) / 3600, 2)               AS suma_kal_h,
+                   ROUND(NVL(MAX(nt.suma_czas_nadg), 0), 2)        AS suma_nadg_h,
+                   ROUND(
+                       SUM(kb.czas_nom) / 3600
+                       + NVL(MAX(nt.suma_czas_nadg), 0),
+                       2
+                   )                                                AS suma_czas_nom_h
+            FROM kal_base kb
+            JOIN okres o
+                 ON  o.prac_id     = kb.prac_id
+                 AND kb.dzien_mies >= o.poczatek_okresu
+                 AND kb.dzien_mies <= o.koniec_okresu
+            LEFT JOIN nadg_tydz nt
+                 ON  nt.prac_id        = kb.prac_id
+                 AND nt.poczatek_okresu = o.poczatek_okresu
+                 AND nt.nr_tygodnia    = FLOOR((kb.dzien_mies - o.poczatek_okresu) / 7)
+            GROUP BY
+                   kb.prac_id,
+                   o.poczatek_okresu,
+                   o.koniec_okresu,
+                   FLOOR((kb.dzien_mies - o.poczatek_okresu) / 7)
+        )
+
+  SELECT /*+ LEADING(p o t cn) USE_HASH(cn) */
+        ROW_NUMBER() OVER (ORDER BY NLSSORT(p.nazwisko, 'NLS_SORT=POLISH'), NLSSORT(p.imie,'NLS_SORT=POLISH')) AS lp,
+         p.imie,
+         p.nazwisko,
+         p.nr_ew,
+         p.nr_karty,
+         p.jednostka_org AS "jednostka organizacyjna",
+         p.mpk,
+         p.stanowisko,
+         CASE o.dlugosc
+             WHEN 1 THEN '1 - miesięczny okres rozliczeniowy'
+             WHEN 3 THEN '3 - miesięczny okres rozliczeniowy'
+         END AS "okres rozliczeniowy",
+         TO_CHAR(o.poczatek_okresu, 'dd-mm-yyyy') AS "pierwszy dzien okresu rozliczeniowego",
+         TO_CHAR(o.poczatek_okresu + t.nr * 7, 'dd-mm-yyyy') AS "pierwszy dzien tygodnia",
+         'od ' || TO_CHAR(o.poczatek_okresu + t.nr * 7, 'dd-mm-yyyy')
+             || ' do ' || TO_CHAR(
+                 LEAST(o.poczatek_okresu + t.nr * 7 + 6, DATE '2026-04-06'),
+                 'dd-mm-yyyy'
+             ) AS "zakres tygodnia",
+         cn.suma_kal_h      AS "CZAS_NOM z kalendarza [h]",
+         cn.suma_nadg_h     AS "suma CZAS nadgodzin [h]",
+         cn.suma_czas_nom_h AS "suma CZAS_NOM [h]",
+         ROUND(
+             AVG(cn.suma_czas_nom_h) OVER (
+                 PARTITION BY p.prac_id, o.poczatek_okresu, o.koniec_okresu
+             ), 2
+         ) AS "srednia CZAS_NOM w okresie [h]"
+  FROM prac_hr p
+  JOIN okres o ON o.prac_id = p.prac_id
+  JOIN (
+      SELECT LEVEL - 1 AS nr
+      FROM DUAL
+      CONNECT BY LEVEL <= 26
+  ) t ON o.poczatek_okresu + t.nr * 7 BETWEEN DATE '2026-01-01' AND DATE '2026-04-06'
+  JOIN czas_nom_agg cn
+         ON  cn.prac_id        = p.prac_id
+         AND cn.poczatek_okresu = o.poczatek_okresu
+         AND cn.nr_tygodnia    = t.nr
+  ORDER BY p.nazwisko, p.imie, o.poczatek_okresu, t.nr;
