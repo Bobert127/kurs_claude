@@ -1,10 +1,14 @@
 -- =====================================================================
 -- Zestawienie zlecen / nadgodzin - kolumny godzinowe w formacie HH:MI.
 --
--- Kolumny od g_zlecone do YTD, ktore sa GODZINAMI (wynik p_rcp_licz.n_nh,
--- np. 10.5), prezentowane jako HH:MI (10:30). Kolumny "dniowe"
--- (odebrane_dni, saldo_dni) oraz tekstowe/id zostaja bez zmian.
--- Obsluga: NULL, wartosci > 24h (np. 40 -> 40:00) i znak ujemny (saldo).
+-- Kolumny godzinowe (g_zlecone..za_g_nocne, saldo_godzin) prezentowane jako
+-- HH:MI (np. 10.5 -> 10:30). Obsluga: NULL, >24h (40 -> 40:00), znak ujemny.
+--
+-- BEZ maski (zostaja jak byly):
+--   YTD          - liczba skumulowana roczna (np. 137.45), pokazywana liczbowo
+--   odebrane_dni - liczba dni (0/1)
+--   saldo_dni    - liczba dni
+--   oraz kolumny tekstowe/id.
 --
 -- UWAGA (GenRap/wzorzec): kolumny godzinowe sa teraz TEKSTEM 'HH:MI', wiec
 --   ich komorki w szablonie ustaw na tekst (@), a zmienne raportu na VARCHAR2
@@ -26,7 +30,7 @@ SELECT
     CASE WHEN src.za_g_nocne IS NULL THEN NULL ELSE CASE WHEN src.za_g_nocne < 0 THEN '-' END||LPAD(TO_CHAR(TRUNC(ROUND(ABS(src.za_g_nocne)*60)/60)),2,'0')||':'||LPAD(TO_CHAR(MOD(ROUND(ABS(src.za_g_nocne)*60),60)),2,'0') END AS za_g_nocne,
     CASE WHEN src.saldo_godzin IS NULL THEN NULL ELSE CASE WHEN src.saldo_godzin < 0 THEN '-' END||LPAD(TO_CHAR(TRUNC(ROUND(ABS(src.saldo_godzin)*60)/60)),2,'0')||':'||LPAD(TO_CHAR(MOD(ROUND(ABS(src.saldo_godzin)*60),60)),2,'0') END AS saldo_godzin,
     saldo_dni,
-    CASE WHEN src.ytd IS NULL THEN NULL ELSE CASE WHEN src.ytd < 0 THEN '-' END||LPAD(TO_CHAR(TRUNC(ROUND(ABS(src.ytd)*60)/60)),2,'0')||':'||LPAD(TO_CHAR(MOD(ROUND(ABS(src.ytd)*60),60)),2,'0') END AS ytd,
+    ytd,                              -- YTD: liczba (np. 137.45), BEZ maski HH:MI
     okres_rozliczeniowy
 FROM (
         SELECT
