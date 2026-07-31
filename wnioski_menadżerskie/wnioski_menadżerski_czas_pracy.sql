@@ -22,7 +22,7 @@ SELECT
             SELECT JEOR.SYMBOL
             FROM L_STANOWISKA L
                  JOIN TETA_JEDN_ORG JEOR
-                     ON JEOR.ID = L.JEOR_ID
+                   ON JEOR.ID = L.JEOR_ID
             WHERE L.PRAC_ID = PRAC.ID
               AND (L.STATUS IS NULL OR L.STATUS IN ('W','Z'))
               AND L.DATA_OD <= TRUNC(SYSDATE)
@@ -36,7 +36,7 @@ SELECT
             SELECT JEOR.SYMBOL
             FROM L_STANOWISKA L
                  JOIN TETA_JEDN_ORG JEOR
-                     ON JEOR.ID = L.JEOR_ID
+                   ON JEOR.ID = L.JEOR_ID
             WHERE L.PRAC_ID = PRAC.ID
               AND (L.STATUS IS NULL OR L.STATUS IN ('W','Z'))
             ORDER BY L.DATA_OD DESC
@@ -50,7 +50,7 @@ SELECT
             SELECT JEOR.NAZWA
             FROM L_STANOWISKA L
                  JOIN TETA_JEDN_ORG JEOR
-                     ON JEOR.ID = L.JEOR_ID
+                   ON JEOR.ID = L.JEOR_ID
             WHERE L.PRAC_ID = PRAC.ID
               AND (L.STATUS IS NULL OR L.STATUS IN ('W','Z'))
               AND L.DATA_OD <= TRUNC(SYSDATE)
@@ -64,7 +64,7 @@ SELECT
             SELECT JEOR.NAZWA
             FROM L_STANOWISKA L
                  JOIN TETA_JEDN_ORG JEOR
-                     ON JEOR.ID = L.JEOR_ID
+                   ON JEOR.ID = L.JEOR_ID
             WHERE L.PRAC_ID = PRAC.ID
               AND (L.STATUS IS NULL OR L.STATUS IN ('W','Z'))
             ORDER BY L.DATA_OD DESC
@@ -78,7 +78,7 @@ SELECT
             SELECT S.NAZWA
             FROM L_STANOWISKA L
                  JOIN SL_STAN S
-                     ON S.ID = L.KASTA_SL_STAN_ID
+                   ON S.ID = L.KASTA_SL_STAN_ID
             WHERE L.PRAC_ID = PRAC.ID
               AND (L.STATUS IS NULL OR L.STATUS IN ('W','Z'))
               AND L.DATA_OD <= TRUNC(SYSDATE)
@@ -90,7 +90,7 @@ SELECT
             SELECT S.NAZWA
             FROM L_STANOWISKA L
                  JOIN SL_STAN S
-                     ON S.ID = L.KASTA_SL_STAN_ID
+                   ON S.ID = L.KASTA_SL_STAN_ID
             WHERE L.PRAC_ID = PRAC.ID
               AND (L.STATUS IS NULL OR L.STATUS IN ('W','Z'))
             ORDER BY L.DATA_OD DESC
@@ -104,7 +104,7 @@ SELECT
             SELECT S.NAZWA_2
             FROM L_STANOWISKA L
                  JOIN SL_STAN S
-                     ON S.ID = L.KASTA_SL_STAN_ID
+                   ON S.ID = L.KASTA_SL_STAN_ID
             WHERE L.PRAC_ID = PRAC.ID
               AND (L.STATUS IS NULL OR L.STATUS IN ('W','Z'))
             ORDER BY L.DATA_OD DESC
@@ -114,7 +114,7 @@ SELECT
             SELECT S.NAZWA_2
             FROM L_STANOWISKA L
                  JOIN SL_STAN S
-                     ON S.ID = L.KASTA_SL_STAN_ID
+                   ON S.ID = L.KASTA_SL_STAN_ID
             WHERE L.PRAC_ID = PRAC.ID
               AND (L.STATUS IS NULL OR L.STATUS IN ('W','Z'))
             ORDER BY L.DATA_OD DESC
@@ -126,100 +126,94 @@ SELECT
     (
         SELECT DISTINCT RECO.RV_MEANING
         FROM CG_REF_CODES RECO
-        WHERE RECO.RV_DOMAIN =
-              'ost_dane.t_stan(PRAC.PRAC_ID)'
+        WHERE RECO.RV_DOMAIN = 'ost_dane.t_stan(PRAC.PRAC_ID)'
+          AND RECO.RV_LOW_VALUE =
+              (
+                  SELECT K.STATUS
+                  FROM L_STANOWISKA L
+                       JOIN KARTOTEKA_STANOWISK K
+                         ON K.SL_STAN_ID = L.KASTA_SL_STAN_ID
+                        AND K.JEOR_ID    = L.JEOR_ID
+                        AND K.ID         = L.KASTA_ID
+                  WHERE L.PRAC_ID = PRAC.ID
+                    AND (L.STATUS IS NULL OR L.STATUS IN ('W','Z'))
+                  ORDER BY L.DATA_OD DESC
+                  FETCH FIRST 1 ROWS ONLY
+              )
     ) AS RODZAJ_STANOWISKA,
 
     /* Typ stanowiska */
-    NVL(
-        (
-            SELECT T.NAZWA
-            FROM L_STANOWISKA L
-                 JOIN KARTOTEKA_STANOWISK K
-                     ON K.ID = L.KASTA_ID
-                 JOIN KARTA_OPISU_STANOWISKA KOS
-                     ON KOS.ID = K.KOS_ID
-                 JOIN ZP_SL_TYPY_STAN T
-                     ON T.ID = KOS.ZP_SL_TYST_ID
-            WHERE L.PRAC_ID = PRAC.ID
-            ORDER BY L.DATA_OD DESC
-            FETCH FIRST 1 ROWS ONLY
-        ),
-        (
-            SELECT T.NAZWA
-            FROM L_STANOWISKA L
-                 JOIN KARTOTEKA_STANOWISK K
-                     ON K.ID = L.KASTA_ID
-                 JOIN KARTA_OPISU_STANOWISKA KOS
-                     ON KOS.ID = K.KOS_ID
-                 JOIN ZP_SL_TYPY_STAN T
-                     ON T.ID = KOS.ZP_SL_TYST_ID
-            WHERE L.PRAC_ID = PRAC.ID
-            ORDER BY L.DATA_OD DESC
-            FETCH FIRST 1 ROWS ONLY
-        )
+    (
+        SELECT T.NAZWA
+        FROM L_STANOWISKA L
+             JOIN KARTOTEKA_STANOWISK K
+               ON K.SL_STAN_ID = L.KASTA_SL_STAN_ID
+              AND K.JEOR_ID    = L.JEOR_ID
+              AND K.ID         = L.KASTA_ID
+             JOIN KARTA_OPISU_STANOWISKA KOS
+               ON KOS.ID = K.KOS_ID
+             JOIN ZP_SL_TYPY_STAN T
+               ON T.ID = KOS.ZP_SL_TYST_ID
+        WHERE L.PRAC_ID = PRAC.ID
+          AND (L.STATUS IS NULL OR L.STATUS IN ('W','Z'))
+        ORDER BY L.DATA_OD DESC
+        FETCH FIRST 1 ROWS ONLY
     ) AS TYP_STANOWISKA,
 
     /* Lokalizacja */
-    NVL(
-        (
-            SELECT S.NAZWA
-            FROM L_STANOWISKA L
-                 JOIN KARTOTEKA_STANOWISK K
-                     ON K.ID = L.KASTA_ID
-                 JOIN SL_LOKAL_STAN S
-                     ON S.ID = K.LOSTA_ID
-            WHERE L.PRAC_ID = PRAC.ID
-            ORDER BY L.DATA_OD DESC
-            FETCH FIRST 1 ROWS ONLY
-        ),
-        (
-            SELECT S.NAZWA
-            FROM L_STANOWISKA L
-                 JOIN KARTOTEKA_STANOWISK K
-                     ON K.ID = L.KASTA_ID
-                 JOIN SL_LOKAL_STAN S
-                     ON S.ID = K.LOSTA_ID
-            WHERE L.PRAC_ID = PRAC.ID
-            ORDER BY L.DATA_OD DESC
-            FETCH FIRST 1 ROWS ONLY
-        )
+    (
+        SELECT SLOK.NAZWA
+        FROM L_STANOWISKA L
+             JOIN KARTOTEKA_STANOWISK K
+               ON K.SL_STAN_ID = L.KASTA_SL_STAN_ID
+              AND K.JEOR_ID    = L.JEOR_ID
+              AND K.ID         = L.KASTA_ID
+             JOIN SL_LOKAL_STAN SLOK
+               ON SLOK.ID = K.LOSTA_ID
+        WHERE L.PRAC_ID = PRAC.ID
+          AND (L.STATUS IS NULL OR L.STATUS IN ('W','Z'))
+        ORDER BY L.DATA_OD DESC
+        FETCH FIRST 1 ROWS ONLY
     ) AS LOKALIZACJA,
 
     RODS.SYMBOL AS RODZINA_STANOWISK_SYMBOL,
     RODS.NAZWA  AS RODZINA_STANOWISK,
 
-    /* Kod zawodu GUS */
+    /* Kod GUS stanowiska */
     (
         SELECT SLKZ.KOD
         FROM L_STANOWISKA L
              JOIN SL_STAN S
-                  ON S.ID = L.KASTA_SL_STAN_ID
+               ON S.ID = L.KASTA_SL_STAN_ID
              JOIN SL_KODY_ZAWOD SLKZ
-                  ON SLKZ.ID = S.SLKZ_ID
+               ON SLKZ.ID = S.SLKZ_ID
         WHERE L.PRAC_ID = PRAC.ID
+          AND (L.STATUS IS NULL OR L.STATUS IN ('W','Z'))
         ORDER BY L.DATA_OD DESC
         FETCH FIRST 1 ROWS ONLY
     ) AS KOD_GUS,
 
     /* Przełożony */
-    (
-        SELECT PRAC_W.IMIE || ' ' || PRAC_W.NAZWISKO
-        FROM L_STRUKTURA_AGENTOW STAG
-             JOIN SL_RODZ_PODL RPSL
-                  ON RPSL.ID = STAG.RODZ_PODL_ID
-             JOIN T_PRAC_W PRAC_W
-                  ON PRAC_W.PRAC_ID = STAG.PRZELOZONY_ID
-        WHERE STAG.PRAC_ID = PRAC.ID
-          AND STAG.BEZPOSREDNI = 'T'
-          AND RPSL.DEFAULT_KIND = 'T'
-          AND RPSL.AKTUALNA = 'T'
-        ORDER BY STAG.DATA_OD DESC,
-                 STAG.DATA_UTWORZENIA DESC
-        FETCH FIRST 1 ROWS ONLY
+    NVL(
+        (
+            SELECT PRAC_W.IMIE || ' ' || PRAC_W.NAZWISKO
+            FROM L_STRUKTURA_AGENTOW STAG
+                 JOIN SL_RODZ_PODL RPSL
+                   ON RPSL.ID = STAG.RODZ_PODL_ID
+                  AND RPSL.DEFAULT_KIND = 'T'
+                  AND RPSL.AKTUALNA = 'T'
+                 JOIN T_PRAC_W PRAC_W
+                   ON PRAC_W.PRAC_ID = STAG.PRZELOZONY_ID
+            WHERE STAG.PRAC_ID = PRAC.ID
+              AND STAG.BEZPOSREDNI = 'T'
+            ORDER BY STAG.DATA_OD DESC,
+                     STAG.DATA_UTWORZENIA DESC
+            FETCH FIRST 1 ROWS ONLY
+        ),
+        NULL
     ) AS PRZELOZONY,
 
-    TO_CHAR(RCBO.DATA,'YYYY-MM') AS ROK_MIESIAC,
+    TO_CHAR(RCBO.DATA, 'YYYY-MM') AS ROK_MIESIAC,
 
     RK_MPK_SQL.KOD(RCBO.MPK_ID) AS KOD_MPK,
 
@@ -227,7 +221,7 @@ SELECT
         SELECT WOTS.NAME
         FROM KP_RCP_EMPLOYEE_WOTS EMWO
              JOIN KP_RCP_WORKING_TIME_SYSTEMS WOTS
-                  ON WOTS.ID = EMWO.WOTS_ID
+               ON WOTS.ID = EMWO.WOTS_ID
         WHERE EMWO.PRAC_ID = PRAC.ID
           AND EMWO.DATE_FROM <= TRUNC(LAST_DAY(RCBO.DATA))
           AND (EMWO.DATE_TO >= TRUNC(LAST_DAY(RCBO.DATA))
@@ -238,7 +232,7 @@ SELECT
         SELECT RCOK.NAZWA
         FROM KP_RCP_OKRESY_PRAC OKRP
              JOIN KP_RCP_OKRESY_BILANSU RCOK
-                  ON RCOK.ID = OKRP.RCOK_ID
+               ON RCOK.ID = OKRP.RCOK_ID
         WHERE OKRP.PRAC_ID = PRAC.ID
           AND OKRP.DATA_OD <= TRUNC(LAST_DAY(RCBO.DATA))
           AND (OKRP.DATA_DO >= TRUNC(LAST_DAY(RCBO.DATA))
@@ -247,44 +241,38 @@ SELECT
     ) AS OKRES_ROZLICZENIOWY,
 
     NUMTODSINTERVAL(
-        KP_RCP_OVERTIME_SUMMARY
-            .Employee_Unused_Summary_Json(
-                PRAC.ID,
-                'T',
-                'T',
-                RCBO.DATA
-            ).unused_hours_total,
+        KP_RCP_OVERTIME_SUMMARY.Employee_Unused_Summary_Json(
+            PRAC.ID,
+            'T',
+            'T',
+            RCBO.DATA
+        ).UNUSED_HOURS_TOTAL,
         'SECOND'
     ) AS SALDO_NADGODZIN,
 
-    KP_RCP_OVERTIME_SUMMARY
-        .Employee_Unused_Summary_Json(
-            PRAC.ID,
-            'T',
-            'T',
-            RCBO.DATA
-        ).unused_days_total
-        AS SALDO_DNI_DO_ODBIORU,
+    KP_RCP_OVERTIME_SUMMARY.Employee_Unused_Summary_Json(
+        PRAC.ID,
+        'T',
+        'T',
+        RCBO.DATA
+    ).UNUSED_DAYS_TOTAL AS SALDO_DNI_DO_ODBIORU,
 
     NUMTODSINTERVAL(
-        KP_RCP_OVERTIME_SUMMARY
-            .Employee_Unused_Summary_Json(
-                PRAC.ID,
-                'N',
-                'T',
-                RCBO.DATA
-            ).unused_short_break_hours_total,
+        KP_RCP_OVERTIME_SUMMARY.Employee_Unused_Summary_Json(
+            PRAC.ID,
+            'N',
+            'T',
+            RCBO.DATA
+        ).UNUSED_SHORT_BREAK_HOURS_TOTAL,
         'SECOND'
     ) AS SALDO_NADGODZIN_SKROCONY_ODPOCZYNEK,
 
-    KP_RCP_OVERTIME_SUMMARY
-        .Employee_Unused_Summary_Json(
-            PRAC.ID,
-            'T',
-            'N',
-            RCBO.DATA
-        ).unused_short_break_days_total
-        AS SALDO_DNI_SKROCONY_ODPOCZYNEK
+    KP_RCP_OVERTIME_SUMMARY.Employee_Unused_Summary_Json(
+        PRAC.ID,
+        'T',
+        'N',
+        RCBO.DATA
+    ).UNUSED_SHORT_BREAK_DAYS_TOTAL AS SALDO_DNI_SKROCONY_ODPOCZYNEK
 
 FROM NT_KP_PRC_PRACOWNICY PRAC
 
@@ -301,7 +289,7 @@ LEFT JOIN NT_KP_SLO_RODZINY_STAN RODS
        ON RODS.ID = PKOS.RODS_ID
 
 WHERE RCBO.DATA >= ADD_MONTHS(TRUNC(SYSDATE), -24)
-  AND RCBO.STATUS IN ('M', 'ZM')
+  AND RCBO.STATUS IN ('M','ZM')
 
 ORDER BY
     PRAC.NAZWISKO,
