@@ -26,7 +26,8 @@ SELECT
     CASE WHEN src.saldo_godzin IS NULL THEN NULL ELSE CASE WHEN src.saldo_godzin < 0 THEN '-' END||LPAD(TO_CHAR(TRUNC(ROUND(ABS(src.saldo_godzin)*60)/60)),2,'0')||':'||LPAD(TO_CHAR(MOD(ROUND(ABS(src.saldo_godzin)*60),60)),2,'0') END AS saldo_godzin,
     saldo_dni,
     ytd,                              -- YTD: liczba (np. 137.45), BEZ maski HH:MI
-    okres_rozliczeniowy
+    okres_rozliczeniowy,
+    daty_zlecen                       -- daty zleceń (odrębne dni) sklejone po przecinku
 FROM (
         -- warstwa 2: agregacja do jednego wiersza na pracownika
         SELECT
@@ -46,7 +47,9 @@ FROM (
             SUM(saldo_godzin)     saldo_godzin,
             SUM(saldo_dni)        saldo_dni,
             MAX(ytd)              ytd,
-            MAX(okres_rozliczeniowy) okres_rozliczeniowy
+            MAX(okres_rozliczeniowy) okres_rozliczeniowy,
+            LISTAGG(CASE WHEN rn_data = 1 THEN TO_CHAR(data_dt, 'dd-mm-yyyy') END, ', ')
+                WITHIN GROUP (ORDER BY data_dt) daty_zlecen
         FROM (
                 -- warstwa 1: wiersze dzienne (per zlecenie)
                 SELECT
@@ -76,7 +79,9 @@ FROM (
                   FROM RCP_BILANS B
                   WHERE B.PRAC_ID = ZN.PRAC_ID
                   AND TRUNC(B.DATA) = TRUNC(ZN.DATA)
-                  ) OKRES_ROZLICZENIOWY
+                  ) OKRES_ROZLICZENIOWY,
+                  zn.data data_dt,
+                  ROW_NUMBER() OVER (PARTITION BY p.prac_id, TRUNC(zn.data) ORDER BY zn.data) rn_data
 
             FROM t_prac p, KP_RCP_ZLEC_NADG_PRAC zn
             left join KP_RCP_LABS_RCZP odb on odb.rczp_id = zn.id
