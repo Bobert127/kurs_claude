@@ -81,7 +81,7 @@ FROM (
                   AND TRUNC(B.DATA) = TRUNC(ZN.DATA)
                   ) OKRES_ROZLICZENIOWY,
                   zn.data data_dt,
-                  ROW_NUMBER() OVER (PARTITION BY p.prac_id, TRUNC(zn.data) ORDER BY zn.data) rn_data
+                  ROW_NUMBER() OVER (PARTITION BY zn.id ORDER BY zn.data) rn_data
 
             FROM t_prac p, KP_RCP_ZLEC_NADG_PRAC zn
             left join KP_RCP_LABS_RCZP odb on odb.rczp_id = zn.id
