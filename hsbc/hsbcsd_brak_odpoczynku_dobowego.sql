@@ -768,3 +768,245 @@ SELECT ROW_NUMBER() OVER (ORDER BY nazwisko, imie, dzien_mies) AS lp,
        END AS czy_zach_odpoczynek_dobowy
 FROM wyliczenia
 ORDER BY nazwisko, imie, dzien_mies;
+
+
+-- =====================================================================
+-- Wersja 7 (pracownicy v2) - parametr pracownicy (prac_id) + odpoczynek
+--                            dobowy liczony jako MINIMUM wszystkich luk
+--
+-- ROZNICE vs Wersja 6:
+--   1. CTE 'pracownicy' - lista prac_id sterujaca calym zapytaniem
+--      (tu: po nr_ew + zakres zatrudnienia); filtr wchodzi najwczesniej
+--      (kalendarz_src, zdarzenia_aggr) -> mniej danych do okien/agregatow.
+--   2. Odpoczynek dobowy = LEAST z luk liczonych osobno w CTE 'luki':
+--        - odp_przed_dyzurem   : koniec_pracy   -> poczatek_dyzuru
+--        - odp_po_dyzurze      : koniec_dyzuru  -> poczatek nast. zmiany
+--        - odp_przed_zleceniem : koniec_pracy   -> poczatek_zlecenia
+--        - odp_po_zleceniu     : koniec_zlecenia-> poczatek nast. zmiany
+--        - odp_praca_do_zmiany : koniec_pracy   -> poczatek nast. zmiany
+--      Luki "po ..." licza sie tylko gdy istnieje realna nast. zmiana
+--      (next_typ_dnia IS NULL). Status wskazuje wiazaca (najkrotsza) luke.
+--   3. FIX: dzien nastepny wolny + dyzur/zlecenie w tym dniu -> odpoczynek
+--      NIE jest juz na sztywno 16, tylko realna luka do poczatku dyzuru.
+-- =====================================================================
+SELECT     lp,
+    imie,
+    nazwisko,
+    numer_ewidencyjny,
+    nr_karty,
+    dzien_miesiaca,
+    poczatek_pracy,
+    koniec_pracy,
+    poczatek_pier_zlecenia,
+    poczatek_zlecenia,
+    koniec_zlecenia,
+    ilosc_zlecen,
+    poczatek_dyzuru,
+    koniec_dyzuru,
+    ilosc_dyzurow,
+    odpoczynek_z_uwzgl_dyzuru,
+    poczatek_pracy_nas_dzien,
+    nastepny_dzien,
+    rodzaj_dnia_nastepnego,
+    godziny_odpoczynku,
+    czy_zach_odpoczynek_dobowy
+FROM   (
+
+WITH parametry AS (
+    SELECT  TO_DATE('10-06-2026', 'DD-MM-YYYY') AS data_od,
+            TO_DATE('13-06-2026', 'DD-MM-YYYY') AS data_do
+    FROM dual
+),
+pracownicy AS (
+    SELECT /*+ MATERIALIZE */ prac.prac_id AS prac_id
+    FROM t_prac prac
+    CROSS JOIN parametry p
+    WHERE prac.DATA_ZATR <= p.data_od
+      AND (prac.DATA_ROZW IS NULL OR prac.DATA_ROZW >= p.data_do)
+      AND prac.nr_ew = '45041478'
+),
+kalendarz_src AS (
+    SELECT /*+ MATERIALIZE */
+           k.prac_id, k.id, k.dzien_mies, k.czas_od, k.czas_do, k.typ_dnia
+    FROM NT_KP_KDR_KALENDARZE_PRAC k
+    CROSS JOIN parametry p
+    WHERE k.dzien_mies >= p.data_od
+      AND k.dzien_mies <  p.data_do + 2
+      AND k.prac_id IN (SELECT prac_id FROM pracownicy)
+),
+kalendarz AS (
+    SELECT /*+ MATERIALIZE */
+           k.prac_id, k.id, k.dzien_mies, k.czas_od, k.czas_do, k.typ_dnia,
+           LEAD(k.czas_od)    OVER (PARTITION BY k.prac_id ORDER BY k.dzien_mies) AS next_czas_od,
+           LEAD(k.dzien_mies) OVER (PARTITION BY k.prac_id ORDER BY k.dzien_mies) AS next_dzien_mies,
+           LEAD(k.typ_dnia)   OVER (PARTITION BY k.prac_id ORDER BY k.dzien_mies) AS next_typ_dnia
+    FROM kalendarz_src k
+),
+kalendarz_raport AS (
+    SELECT /*+ MATERIALIZE */
+           k.*
+    FROM kalendarz k
+    WHERE k.typ_dnia IS NULL
+),
+zlecenia_aggr AS (
+    SELECT /*+ MATERIALIZE NO_MERGE */
+           z.prac_id, z.kali_id,
+           COUNT(z.id) AS ile_zlecen,
+           MIN(z.godz_od) AS pierwsze_godz_od,
+           MAX(z.godz_od) KEEP (DENSE_RANK LAST ORDER BY z.godz_do, z.id) AS godz_od,
+           MAX(z.godz_do) KEEP (DENSE_RANK LAST ORDER BY z.godz_do, z.id) AS godz_do
+    FROM KP_RCP_ZLEC_NADG_PRAC z
+    JOIN kalendarz_raport k
+      ON k.prac_id = z.prac_id
+     AND k.id      = z.kali_id
+    GROUP BY z.prac_id, z.kali_id
+),
+zdarzenia_aggr AS (
+    SELECT /*+ MATERIALIZE NO_MERGE */
+           zd.prac_id,
+           TRUNC(zd.workday_date) AS workday_date,
+           COUNT(*) AS ile_zdarzen,
+           MAX(zd.date_time_from) KEEP (DENSE_RANK LAST ORDER BY zd.date_time_to, zd.date_time_from) AS date_time_from,
+           MAX(zd.date_time_to)   KEEP (DENSE_RANK LAST ORDER BY zd.date_time_to, zd.date_time_from) AS date_time_to
+    FROM KP_RCP_WORK_TIME_EVENTS zd
+    CROSS JOIN parametry p
+    WHERE zd.wtet_id = 18
+      AND zd.workday_date >= p.data_od
+      AND zd.workday_date <  p.data_do + 2
+      AND zd.prac_id IN (SELECT prac_id FROM pracownicy)
+    GROUP BY zd.prac_id, TRUNC(zd.workday_date)
+),
+dane AS (
+    SELECT /*+ LEADING(k p) USE_HASH(p z zd) */
+           p.imie, p.nazwisko, p.nr_ew AS numer_ewidencyjny, p.nr_karty,
+           k.dzien_mies, k.czas_od, k.czas_do,
+           k.next_czas_od, k.next_dzien_mies, k.next_typ_dnia,
+           z.pierwsze_godz_od, z.godz_od, z.godz_do, z.ile_zlecen,
+           zd.date_time_from, zd.date_time_to, zd.ile_zdarzen,
+           TRUNC(k.dzien_mies)      + (k.czas_do     - TRUNC(k.czas_do))     AS koniec_pracy_dt,
+           TRUNC(k.next_dzien_mies) + (k.next_czas_od - TRUNC(k.next_czas_od)) AS poczatek_nast_pracy_dt,
+           TRUNC(k.dzien_mies)      + (z.godz_od     - TRUNC(z.godz_od))     AS poczatek_zlecenia_dt,
+           TRUNC(k.dzien_mies)      + (z.godz_do     - TRUNC(z.godz_do))     AS koniec_zlecenia_dt
+    FROM kalendarz_raport k
+    JOIN t_prac p
+      ON p.prac_id = k.prac_id
+    --  JOIN t_prac_rob rob
+    --   ON p.prac_id = rob.prac_id and rob.sessionid = ^$SESSIONID^
+    LEFT JOIN zlecenia_aggr z
+      ON z.prac_id = k.prac_id
+     AND z.kali_id = k.id
+    LEFT JOIN zdarzenia_aggr zd
+      ON zd.prac_id = k.prac_id
+     AND zd.workday_date = k.dzien_mies
+),
+luki AS (
+    SELECT d.*,
+           -- odpoczynek PRZED dyżurem: koniec_pracy -> poczatek_dyzuru
+           CASE WHEN d.date_time_from IS NOT NULL
+                     AND d.date_time_from >= d.koniec_pracy_dt
+                THEN ROUND((d.date_time_from - d.koniec_pracy_dt) * 24, 2)
+           END AS odp_przed_dyzurem,
+           -- odpoczynek PO dyżurze: koniec_dyzuru -> poczatek nast. zmiany (tylko gdy jest realna nast. zmiana)
+           CASE WHEN d.next_typ_dnia IS NULL
+                     AND d.next_czas_od IS NOT NULL
+                     AND d.date_time_to IS NOT NULL
+                     AND d.poczatek_nast_pracy_dt >= d.date_time_to
+                THEN ROUND((d.poczatek_nast_pracy_dt - d.date_time_to) * 24, 2)
+           END AS odp_po_dyzurze,
+           -- odpoczynek PRZED zleceniem: koniec_pracy -> poczatek_zlecenia
+           CASE WHEN d.poczatek_zlecenia_dt IS NOT NULL
+                     AND d.poczatek_zlecenia_dt >= d.koniec_pracy_dt
+                THEN ROUND((d.poczatek_zlecenia_dt - d.koniec_pracy_dt) * 24, 2)
+           END AS odp_przed_zleceniem,
+           -- odpoczynek PO zleceniu: koniec_zlecenia -> poczatek nast. zmiany (tylko gdy jest realna nast. zmiana)
+           CASE WHEN d.next_typ_dnia IS NULL
+                     AND d.next_czas_od IS NOT NULL
+                     AND d.koniec_zlecenia_dt IS NOT NULL
+                     AND d.poczatek_nast_pracy_dt >= d.koniec_zlecenia_dt
+                THEN ROUND((d.poczatek_nast_pracy_dt - d.koniec_zlecenia_dt) * 24, 2)
+           END AS odp_po_zleceniu,
+           -- odpoczynek bazowy: koniec_pracy -> poczatek nast. zmiany (tylko gdy jest realna nast. zmiana)
+           CASE WHEN d.next_typ_dnia IS NULL
+                     AND d.next_czas_od IS NOT NULL
+                THEN ROUND((d.poczatek_nast_pracy_dt - d.koniec_pracy_dt) * 24, 2)
+           END AS odp_praca_do_zmiany
+    FROM dane d
+),
+wyliczenia AS (
+    SELECT l.*,
+           CASE
+               -- brak następnej zmiany i brak dyżuru/zlecenia -> nie ma czego mierzyć
+               WHEN l.next_typ_dnia IS NULL
+                    AND l.next_czas_od IS NULL
+                    AND l.date_time_from IS NULL
+                    AND l.poczatek_zlecenia_dt IS NULL
+                   THEN NULL
+               -- dzień następny wolny i brak dyżuru/zlecenia -> pełny odpoczynek
+               WHEN l.next_typ_dnia IS NOT NULL
+                    AND l.odp_przed_dyzurem IS NULL
+                    AND l.odp_przed_zleceniem IS NULL
+                   THEN 16
+               -- w pozostałych przypadkach: najmniejsza (najbardziej restrykcyjna) luka
+               ELSE LEAST(
+                        NVL(l.odp_praca_do_zmiany, 9999),
+                        NVL(l.odp_przed_dyzurem,   9999),
+                        NVL(l.odp_po_dyzurze,      9999),
+                        NVL(l.odp_przed_zleceniem, 9999),
+                        NVL(l.odp_po_zleceniu,     9999)
+                    )
+           END AS godziny_odpoczynku_calc
+    FROM luki l
+)
+SELECT ROW_NUMBER() OVER (ORDER BY nazwisko, imie, dzien_mies) AS lp,
+       imie,
+       nazwisko,
+       numer_ewidencyjny,
+       nr_karty,
+       TO_CHAR(dzien_mies, 'DD-MM-YYYY') AS dzien_miesiaca,
+       TO_CHAR(czas_od, 'HH24:MI') AS poczatek_pracy,
+       TO_CHAR(czas_do, 'HH24:MI') AS koniec_pracy,
+       TO_CHAR(pierwsze_godz_od, 'HH24:MI') AS poczatek_pier_zlecenia,
+       TO_CHAR(godz_od, 'HH24:MI') AS poczatek_zlecenia,
+       TO_CHAR(godz_do, 'HH24:MI') AS koniec_zlecenia,
+       ile_zlecen AS ilosc_zlecen,
+       TO_CHAR(date_time_from, 'HH24:MI') AS poczatek_dyzuru,
+       TO_CHAR(date_time_to, 'HH24:MI') AS koniec_dyzuru,
+       ile_zdarzen AS ilosc_dyzurow,
+       godziny_odpoczynku_calc AS odpoczynek_z_uwzgl_dyzuru,
+       TO_CHAR(next_czas_od, 'HH24:MI') AS poczatek_pracy_nas_dzien,
+       TO_CHAR(next_dzien_mies, 'DD-MM-YYYY') AS nastepny_dzien,
+       CASE next_typ_dnia
+           WHEN 'N'  THEN 'Niedziela'
+           WHEN 'S'  THEN 'Święto'
+           WHEN 'WN' THEN 'Wolne za niedzielę'
+           WHEN 'WS' THEN 'Wolne za święto'
+           WHEN 'SO' THEN 'Wolne za niedzielę i święto'
+           WHEN 'C'  THEN 'Wolne harmonogramowo'
+           WHEN 'W'  THEN 'Dzień wolny'
+           WHEN 'R'  THEN 'Dzień roboczy'
+           ELSE next_typ_dnia
+       END AS rodzaj_dnia_nastepnego,
+       godziny_odpoczynku_calc AS godziny_odpoczynku,
+       CASE
+           WHEN godziny_odpoczynku_calc IS NULL
+               THEN 'BRAK NASTĘPNEJ ZMIANY'
+           WHEN godziny_odpoczynku_calc >= 11
+               THEN CASE WHEN next_typ_dnia IS NOT NULL
+                             AND odp_przed_dyzurem IS NULL
+                             AND odp_przed_zleceniem IS NULL
+                            THEN 'OK - następny dzień wolny'
+                         ELSE 'OK'
+                    END
+           -- naruszenie: wskazujemy wiążącą (najkrótszą) lukę
+           WHEN godziny_odpoczynku_calc = odp_przed_dyzurem
+               THEN 'NARUSZENIE - koniec pracy < 11h do początku dyżuru'
+           WHEN godziny_odpoczynku_calc = odp_po_dyzurze
+               THEN 'NARUSZENIE - koniec dyżuru < 11h do następnej zmiany'
+           WHEN godziny_odpoczynku_calc = odp_przed_zleceniem
+               THEN 'NARUSZENIE - koniec pracy < 11h do początku zlecenia'
+           WHEN godziny_odpoczynku_calc = odp_po_zleceniu
+               THEN 'NARUSZENIE - koniec zlecenia < 11h do następnej zmiany'
+           ELSE 'NARUSZENIE - koniec pracy < 11h do następnej zmiany'
+       END AS czy_zach_odpoczynek_dobowy
+FROM wyliczenia
+ORDER BY nazwisko, imie, dzien_mies);
