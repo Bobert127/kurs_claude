@@ -1,4 +1,6 @@
-select distinct imie, nazwisko, nr_ew, firma, DATA_ZATRUDNIENIA, DATA_ZWOLNIENIA, NAZWA_STANOWISKA, ETAT, JEDN_ORG,
+select distinct
+row_number() over (order by firma, nazwisko, imie, nr_ew) lp,
+imie, nazwisko, nr_ew, firma, DATA_ZATRUDNIENIA, DATA_ZWOLNIENIA, NAZWA_STANOWISKA, ETAT, JEDN_ORG,
 sum(g50) g50, sum(g100) + sum(sred) g100, sum(g_ponadnormatywne) g_ponadnormatywne , sum(nocne) nocne
 from
 (
@@ -53,4 +55,4 @@ union all
         group by p.prac_id, p.imie, p.nazwisko, p.nr_ew, p.data_zatr, p.data_rozw
 ) dane
 group by imie, nazwisko, nr_ew, firma, DATA_ZATRUDNIENIA, DATA_ZWOLNIENIA, NAZWA_STANOWISKA, ETAT, JEDN_ORG
-order by 4, 2, 1;
+order by lp;

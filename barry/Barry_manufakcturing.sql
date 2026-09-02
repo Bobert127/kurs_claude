@@ -1,4 +1,6 @@
-select distinct imie, nazwisko, nr_ew, firma, DATA_ZATRUDNIENIA, DATA_ZWOLNIENIA, NAZWA_STANOWISKA, ETAT, JEDN_ORG,
+select
+row_number() over (order by firma, nazwisko, imie, nr_ew) lp,
+imie, nazwisko, nr_ew, firma, DATA_ZATRUDNIENIA, DATA_ZWOLNIENIA, NAZWA_STANOWISKA, ETAT, JEDN_ORG,
 sum(g50) g50, sum(g100) g100, sum(sred) sred, sum(g_ponadnormatywne) g_ponadnormatywne , sum(nocne) nocne
 from
 (
@@ -59,9 +61,10 @@ union all
 ) dane
 -- where nr_ew in('PL015810')
 group by imie, nazwisko, nr_ew, firma, DATA_ZATRUDNIENIA, DATA_ZWOLNIENIA, NAZWA_STANOWISKA, ETAT, JEDN_ORG
-order by 4, 2, 1;
+order by lp;
 
-select p.imie, p.nazwisko, p.nr_ew, p.NR_KARTY, z.data
+select row_number() over (order by p.nazwisko, p.imie, p.nr_ew, z.data) lp,
+p.imie, p.nazwisko, p.nr_ew, p.NR_KARTY, z.data
 from kp_rcp_zlec_nadg_prac z, t_prac p
 where z.data between DATE '2026-08-01' and DATE '2026-08-30'
 and p.PRAC_ID = z.PRAC_ID
