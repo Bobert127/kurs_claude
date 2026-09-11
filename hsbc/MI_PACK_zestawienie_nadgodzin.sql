@@ -1,16 +1,16 @@
 SELECT     lp, imie, nazwisko, nr_ew, nr_karty, jednostka_org, mpk, stanowisko,
-    CASE WHEN src.g_zlecone IS NULL THEN NULL ELSE CASE WHEN src.g_zlecone < 0 THEN '-' END||LPAD(TO_CHAR(TRUNC(ROUND(ABS(src.g_zlecone)*60)/60)),2,'0')||':'||LPAD(TO_CHAR(MOD(ROUND(ABS(src.g_zlecone)*60),60)),2,'0') END AS g_zlecone,
-    CASE WHEN src.g_ponadwymiar IS NULL THEN NULL ELSE CASE WHEN src.g_ponadwymiar < 0 THEN '-' END||LPAD(TO_CHAR(TRUNC(ROUND(ABS(src.g_ponadwymiar)*60)/60)),2,'0')||':'||LPAD(TO_CHAR(MOD(ROUND(ABS(src.g_ponadwymiar)*60),60)),2,'0') END AS g_ponadwymiar,
-    CASE WHEN src.g_50 IS NULL THEN NULL ELSE CASE WHEN src.g_50 < 0 THEN '-' END||LPAD(TO_CHAR(TRUNC(ROUND(ABS(src.g_50)*60)/60)),2,'0')||':'||LPAD(TO_CHAR(MOD(ROUND(ABS(src.g_50)*60),60)),2,'0') END AS g_50,
-    CASE WHEN src.g_100 IS NULL THEN NULL ELSE CASE WHEN src.g_100 < 0 THEN '-' END||LPAD(TO_CHAR(TRUNC(ROUND(ABS(src.g_100)*60)/60)),2,'0')||':'||LPAD(TO_CHAR(MOD(ROUND(ABS(src.g_100)*60),60)),2,'0') END AS g_100,
-    CASE WHEN src.g_nocne IS NULL THEN NULL ELSE CASE WHEN src.g_nocne < 0 THEN '-' END||LPAD(TO_CHAR(TRUNC(ROUND(ABS(src.g_nocne)*60)/60)),2,'0')||':'||LPAD(TO_CHAR(MOD(ROUND(ABS(src.g_nocne)*60),60)),2,'0') END AS g_nocne,
-    CASE WHEN src.g_odebrane IS NULL THEN NULL ELSE CASE WHEN src.g_odebrane < 0 THEN '-' END||LPAD(TO_CHAR(TRUNC(ROUND(ABS(src.g_odebrane)*60)/60)),2,'0')||':'||LPAD(TO_CHAR(MOD(ROUND(ABS(src.g_odebrane)*60),60)),2,'0') END AS g_odebrane,
+    TO_CHAR(ROUND(src.g_zlecone,        2), 'FM999999990.00') AS g_zlecone,
+    TO_CHAR(ROUND(src.g_ponadwymiar,    2), 'FM999999990.00') AS g_ponadwymiar,
+    TO_CHAR(ROUND(src.g_50,             2), 'FM999999990.00') AS g_50,
+    TO_CHAR(ROUND(src.g_100,            2), 'FM999999990.00') AS g_100,
+    TO_CHAR(ROUND(src.g_nocne,          2), 'FM999999990.00') AS g_nocne,
+    TO_CHAR(ROUND(src.g_odebrane,       2), 'FM999999990.00') AS g_odebrane,
     odebrane_dni,
-    CASE WHEN src.za_g_ponadwymiar IS NULL THEN NULL ELSE CASE WHEN src.za_g_ponadwymiar < 0 THEN '-' END||LPAD(TO_CHAR(TRUNC(ROUND(ABS(src.za_g_ponadwymiar)*60)/60)),2,'0')||':'||LPAD(TO_CHAR(MOD(ROUND(ABS(src.za_g_ponadwymiar)*60),60)),2,'0') END AS za_g_ponadwymiar,
-    CASE WHEN src.za_g_50 IS NULL THEN NULL ELSE CASE WHEN src.za_g_50 < 0 THEN '-' END||LPAD(TO_CHAR(TRUNC(ROUND(ABS(src.za_g_50)*60)/60)),2,'0')||':'||LPAD(TO_CHAR(MOD(ROUND(ABS(src.za_g_50)*60),60)),2,'0') END AS za_g_50,
-    CASE WHEN src.za_g_100 IS NULL THEN NULL ELSE CASE WHEN src.za_g_100 < 0 THEN '-' END||LPAD(TO_CHAR(TRUNC(ROUND(ABS(src.za_g_100)*60)/60)),2,'0')||':'||LPAD(TO_CHAR(MOD(ROUND(ABS(src.za_g_100)*60),60)),2,'0') END AS za_g_100,
-    CASE WHEN src.za_g_nocne IS NULL THEN NULL ELSE CASE WHEN src.za_g_nocne < 0 THEN '-' END||LPAD(TO_CHAR(TRUNC(ROUND(ABS(src.za_g_nocne)*60)/60)),2,'0')||':'||LPAD(TO_CHAR(MOD(ROUND(ABS(src.za_g_nocne)*60),60)),2,'0') END AS za_g_nocne,
-    CASE WHEN src.saldo_godzin IS NULL THEN NULL ELSE CASE WHEN src.saldo_godzin < 0 THEN '-' END||LPAD(TO_CHAR(TRUNC(ROUND(ABS(src.saldo_godzin)*60)/60)),2,'0')||':'||LPAD(TO_CHAR(MOD(ROUND(ABS(src.saldo_godzin)*60),60)),2,'0') END AS saldo_godzin,
+    TO_CHAR(ROUND(src.za_g_ponadwymiar, 2), 'FM999999990.00') AS za_g_ponadwymiar,
+    TO_CHAR(ROUND(src.za_g_50,          2), 'FM999999990.00') AS za_g_50,
+    TO_CHAR(ROUND(src.za_g_100,         2), 'FM999999990.00') AS za_g_100,
+    TO_CHAR(ROUND(src.za_g_nocne,       2), 'FM999999990.00') AS za_g_nocne,
+    TO_CHAR(ROUND(src.saldo_godzin,     2), 'FM999999990.00') AS saldo_godzin,
     saldo_dni,
     ytd,
     okres_rozliczeniowy
@@ -50,7 +50,7 @@ FROM  (
                    nvl(p_rcp_licz.n_nh(za.CLASSIFIED_SECONDS_12/3600 + za.CLASSIFIED_SECONDS_33/3600 + za.CLASSIFIED_SECONDS_20/3600),0) za_g_100,
                    nvl(p_rcp_licz.n_nh(za.CLASSIFIED_SECONDS_03/3600),0) za_g_nocne,
                   ROUND(case when zn.settled = 'T' then 0 else round(p_rcp_licz.n_nh(zn.czas),2) - nvl(p_rcp_licz.n_nh(odb.seconds_count/3600),0) - nvl(p_rcp_licz.n_nh(za.seconds_count/3600),0) end,2) saldo_godzin,
-                  NVL(case when zn.settled = 'T' then 0 when odb.all_day = 'T' then 0  when zn.DAY_OFF_IN_LIEU = 'T' then 1 end, 0) saldo_dni,
+                  NVL(case when zn.settled = 'T' then 0 when odb.all_day = 'T' then 0  when zn.DAY_OFF_IN_LIEU = 'T' and ROW_NUMBER() OVER (PARTITION BY zn.prac_id, k.dzien_mies ORDER BY zn.id) = 1 then 1 else 0 end, 0) saldo_dni,
                   (SELECT round(p_rcp_licz.n_nh(SUM(z.czas)),2)
                   FROM KP_RCP_ZLEC_NADG_PRAC Z
                   WHERE Z.DATA BETWEEN TRUNC(zn.data, 'YYYY') AND (ADD_MONTHS(TRUNC(zn.data, 'YYYY'), 12) - 1)
@@ -63,12 +63,14 @@ FROM  (
                   ) OKRES_ROZLICZENIOWY,
                   zn.data data_dt,
                   ROW_NUMBER() OVER (PARTITION BY zn.id ORDER BY zn.data) rn_data
-            FROM t_prac p, T_PRAC_ROB ROB, KP_RCP_ZLEC_NADG_PRAC zn
+            FROM t_prac p, T_PRAC_ROB ROB, KP_RCP_ZLEC_NADG_PRAC zn, NT_KP_KDR_KALENDARZE_PRAC k
             left join KP_RCP_LABS_RCZP odb on odb.rczp_id = zn.id
             left join KP_RCP_OVERTIME_PAYMENT za on za.RCZP_ID = zn.id
             where p.prac_id = zn.PRAC_ID
             AND P.PRAC_ID = ROB.PRAC_ID
             AND ROB.sessionid = '^$P_SESSION_ID^'
+            AND k.prac_id = zn.prac_id
+            AND k.id = zn.kali_id
             and zn.data between TO_DATE('^$data_od^','^$V_DATA_FORMAT^') and TO_DATE('^$data_do^','^$V_DATA_FORMAT^')
 
             union
@@ -86,7 +88,7 @@ FROM  (
                    nvl(p_rcp_licz.n_nh(za.CLASSIFIED_SECONDS_12/3600 + za.CLASSIFIED_SECONDS_33/3600 + za.CLASSIFIED_SECONDS_20/3600),0) za_g_100,
                    nvl(p_rcp_licz.n_nh(za.CLASSIFIED_SECONDS_03/3600),0) za_g_nocne,
                   ROUND(case when zn.settled = 'T' then 0 else round(p_rcp_licz.n_nh(zn.czas),2) - nvl(p_rcp_licz.n_nh(odb.seconds_count/3600),0) - nvl(p_rcp_licz.n_nh(za.seconds_count/3600),0) end,2) saldo_godzin,
-                  NVL(case when zn.settled = 'T' then 0 when odb.all_day = 'T' then 0  when zn.DAY_OFF_IN_LIEU = 'T' then 1 end, 0) saldo_dni,
+                  NVL(case when zn.settled = 'T' then 0 when odb.all_day = 'T' then 0  when zn.DAY_OFF_IN_LIEU = 'T' and ROW_NUMBER() OVER (PARTITION BY zn.prac_id, k.dzien_mies ORDER BY zn.id) = 1 then 1 else 0 end, 0) saldo_dni,
                   (SELECT round(p_rcp_licz.n_nh(SUM(z.czas)),2)
                   FROM KP_RCP_ZLEC_NADG_PRAC Z
                   WHERE Z.DATA BETWEEN TRUNC(zn.data, 'YYYY') AND (ADD_MONTHS(TRUNC(zn.data, 'YYYY'), 12) - 1)
@@ -99,10 +101,12 @@ FROM  (
                   ) OKRES_ROZLICZENIOWY,
                   zn.data data_dt,
                   ROW_NUMBER() OVER (PARTITION BY zn.id ORDER BY zn.data) rn_data
-            FROM t_prac p, KP_RCP_ZLEC_NADG_PRAC zn
+            FROM t_prac p, KP_RCP_ZLEC_NADG_PRAC zn, NT_KP_KDR_KALENDARZE_PRAC k
             left join KP_RCP_LABS_RCZP odb on odb.rczp_id = zn.id
             left join KP_RCP_OVERTIME_PAYMENT za on za.RCZP_ID = zn.id
             where p.prac_id = zn.PRAC_ID
+            AND k.prac_id = zn.prac_id
+            AND k.id = zn.kali_id
             and zn.data between TO_DATE('^$data_od^','^$V_DATA_FORMAT^') and TO_DATE('^$data_do^','^$V_DATA_FORMAT^')
             AND NOT EXISTS (
                 SELECT 1
