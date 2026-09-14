@@ -1,9 +1,24 @@
 -- =====================================================================
 -- Nieprzerwany odpoczynek tygodniowy - wersja ZOPTYMALIZOWANA
--- VERSION 2 - modul SELECT ... INTO + parametryzacja dat + algorytm
--- najdluzszej przerwy (spojny z hsbcsd_brak_odpoczynku_dobowego.sql V2)
+-- VERSION 3 - poprawka wielokrotnego liczenia godzin przy dluzszych
+-- blokach dni wolnych (>=3 dni pod rzad) + formatowanie liczbowe
 --
--- ZMIANY WZGLEDEM WERSJI 1 (poprzednia zawartosc tego pliku):
+-- ZMIANY WZGLEDEM WERSJI 2:
+--   1. valid_pairs: zamiast tworzyc osobne, NAKLADAJACE SIE NA SIEBIE
+--      okno dla kazdej sasiadujacej pary dni (LEAD(), d1/d1+1), teraz
+--      wykrywa CIAGLE BLOKI dni z TYP_DNIA IS NOT NULL (technika
+--      "gaps and islands": dni_wolne.grp = dzien_mies - ROW_NUMBER()),
+--      i liczy JEDNO okno na caly blok (MIN/MAX(dzien_mies) = d1/d_last).
+--      Blad w V2 powodowal, ze przy bloku dluzszym niz 2 dni (np. urlop
+--      obok weekendu) te same godziny odpoczynku byly liczone
+--      wielokrotnie (raz na kazda sasiadujaca pare dni w bloku) i
+--      sumowane w suma_roznic_h, co zawyzalo wynik nawet 10-krotnie.
+--   2. okna: koniec okna liczony od d_last + 1 (dzien po calym bloku)
+--      zamiast d1 + 2 (co zakladalo zawsze dokladnie 2-dniowy blok).
+--   3. suma_roznic_h sformatowane przez TO_CHAR(..., 'FM999999990.00')
+--      - zawsze dokladnie 2 miejsca po przecinku w wyniku raportu.
+--
+-- ZMIANY WZGLEDEM WERSJI 1 (VERSION 2):
 --   1. Dodano blok SELECT ... INTO v_* do osadzenia w silniku
 --      raportowym (TETA/Konstelacja), ktory iteruje po wierszach i
 --      mapuje kolumny na zmienne v_* - analogicznie do
@@ -18,7 +33,8 @@
 --      NT_KP_KDR_KALENDARZE_PRAC (dawniej osobno: kalendarze + kal_base)
 --      - kalendarze i kal_base sa teraz tylko filtrami na kal_all.
 --   4. valid_pairs liczone przez LEAD() (jeden przebieg sortowania)
---      zamiast self-joina kal_base k1 JOIN kal_base k2.
+--      zamiast self-joina kal_base k1 JOIN kal_base k2 - w V3 zastapione
+--      podejsciem "gaps and islands", patrz wyzej.
 --   5. WAZNE - uruchomione samodzielnie jako zwykly SQL rzuci ORA-01422
 --      (wiele wierszy). Ten zapis ma sens WYLACZNIE w kontekscie
 --      silnika raportu, ktory obsluguje pobieranie wiersz po wierszu.
@@ -137,17 +153,24 @@ WITH
         FROM kal_all ka
         WHERE ka.prac_id IN (SELECT prac_id FROM prac_hr)
     ),
-    valid_pairs AS (
-        SELECT /*+ MATERIALIZE */ prac_id, dzien_mies AS d1
-        FROM (
-            SELECT prac_id, dzien_mies, typ_dnia,
-                   LEAD(typ_dnia)   OVER (PARTITION BY prac_id ORDER BY dzien_mies) AS typ_dnia_next,
-                   LEAD(dzien_mies) OVER (PARTITION BY prac_id ORDER BY dzien_mies) AS dzien_mies_next
-            FROM kal_base
-        )
+    dni_wolne AS (
+        SELECT prac_id, dzien_mies,
+               dzien_mies - ROW_NUMBER() OVER (PARTITION BY prac_id ORDER BY dzien_mies) AS grp
+        FROM kal_base
         WHERE typ_dnia IS NOT NULL
-          AND typ_dnia_next IS NOT NULL
-          AND dzien_mies_next = dzien_mies + 1
+    ),
+    -- Blok CIAGLYCH dni wolnych (>=2 dni pod rzad) liczony JEDEN RAZ,
+    -- zamiast osobnego, nakladajacego sie okna dla kazdej sasiadujacej
+    -- pary dni w tym samym bloku (co powodowalo wielokrotne liczenie
+    -- tych samych godzin przy blokach dluzszych niz 2 dni, np. urlop).
+    valid_pairs AS (
+        SELECT /*+ MATERIALIZE */
+               prac_id,
+               MIN(dzien_mies) AS d1,
+               MAX(dzien_mies) AS d_last
+        FROM dni_wolne
+        GROUP BY prac_id, grp
+        HAVING COUNT(*) >= 2
     ),
     zdarzenia AS (
         SELECT /*+ MATERIALIZE */
@@ -186,7 +209,7 @@ WITH
              AND k_przed.dzien_mies = vp.d1 - 1
         LEFT JOIN kal_base k_po
              ON  k_po.prac_id    = vp.prac_id
-             AND k_po.dzien_mies = vp.d1 + 2
+             AND k_po.dzien_mies = vp.d_last + 1
     ),
     aktywnosci AS (
         SELECT o.prac_id, o.d1, o.k_przed_dt, o.k_po_dt,
@@ -315,7 +338,7 @@ SELECT
                'DD-MM-YYYY'
            ) AS zakres_tygodnia,
        pa.odejmowanie    AS odejmowanie,
-       pa.suma_roznica_h AS suma_roznic_h,
+       TO_CHAR(pa.suma_roznica_h, 'FM999999990.00') AS suma_roznic_h,
        za.z_zdarzenia    AS zdarzenia_wtet_id_18,
        na.n_nadgodziny   AS zlecone_nadgodziny
 FROM prac_hr p
