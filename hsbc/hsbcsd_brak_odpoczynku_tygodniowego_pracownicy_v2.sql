@@ -1,29 +1,55 @@
 -- =====================================================================
 -- Nieprzerwany odpoczynek tygodniowy - Wersja 2 (pracownicy)
--- Konwencja jak w hsbcsd_brak_odpoczynku_dobowego_pracownicy_v2.sql:
+-- VERSION 3 - scalenie z hsbc_brak_odpoczynku_tygodniowego_optim.sql
+-- (jedna, ostateczna wersja pliku; usunieto zduplikowany plik _optim).
+--
+-- Konwencja jak w hsbcsd_brak_odpoczynku_dobowego.sql:
 --   * CTE 'parametry' (data_od / data_do) - jedno miejsce na daty,
---     podmieniane parametrem TYPU DATA (sargability na DZIEN_MIES).
+--     sparametryzowane placeholderami silnika raportu TETA/Konstelacja
+--     (^$DATA_OD^, ^$DATA_DO^, ^$P_DATE_FORMAT^), zaokraglone do PELNYCH
+--     TYGODNI: TRUNC(..., 'IW') dla data_od, +6 dla data_do - raport
+--     zawsze obejmuje pelne tygodnie (pon-nd), niezaleznie od tego, na
+--     jaki dzien tygodnia wypada poczatek/koniec okresu rozliczeniowego.
 --   * CTE 'pracownicy' - lista prac_id z t_prac z warunkami na osoby
 --     ZATRUDNIONE w calym okresie:
 --         DATA_ZATR <= data_od
 --         AND (DATA_ROZW IS NULL OR DATA_ROZW >= data_do)
---     (opcjonalny filtr nr_ew do wskazania pojedynczego pracownika).
 --   * Zrodlowe CTE ograniczone przez prac_id IN (SELECT ... FROM pracownicy).
+--   * SELECT ... INTO v_* do osadzenia w silniku raportowym, ktory
+--     iteruje po wierszach i mapuje kolumny na zmienne v_*.
 --
 -- ODPOCZYNEK Z UWZGL. DYZUROW I NADGODZIN (jak w raporcie dobowym):
---   suma_roznic_h = NAJDLUZSZY CIAGLY odcinek odpoczynku w oknie weekendowym
---   [koniec pracy d1-1 .. poczatek pracy d1+2]. Dyzury (KP_RCP_WORK_TIME_EVENTS
+--   suma_roznic_h = suma NAJDLUZSZYCH ciaglych odcinkow odpoczynku w
+--   oknach dni wolnych w danym tygodniu. Dyzury (KP_RCP_WORK_TIME_EVENTS
 --   wtet_id=18) oraz zlecone nadgodziny (KP_RCP_ZLEC_NADG_PRAC) PRZERYWAJA
 --   odpoczynek - przyciete do okna, dziela je na odcinki, brany jest max.
 --   CTE: okna -> aktywnosci -> segmenty -> odp_agg -> pary.
---   (Poprzednia wersja liczyla GREATEST z pelnym oknem -> zdarzenia/nadgodziny
---    nigdy nie skracaly wyniku; stad stale 64h mimo dyzurow.)
---   Kolumny wyswietlane (zdarzenia_wtet_id_18, zlecone_nadgodziny) sa zawezone
---   do TEGO SAMEGO okna co obliczenia (warunek nachodzenia z_do>k_przed AND
---   z_od<k_po), wiec pokazuja tylko aktywnosci realnie przerywajace odpoczynek.
+--   Kolumny wyswietlane (zdarzenia_wtet_id_18, zlecone_nadgodziny) sa
+--   zawezone do TEGO SAMEGO okna co obliczenia (warunek nachodzenia
+--   z_do>k_przed AND z_od<k_po), wiec pokazuja tylko aktywnosci realnie
+--   przerywajace odpoczynek.
 --
--- UWAGA: zapytanie WIELOWIERSZOWE - do PL/SQL uzyj kursora / BULK COLLECT,
--- nie 'SELECT ... INTO' (ORA-01422).
+-- ZMIANY W VERSION 3 (najwazniejsze - poprawka bledu z V2):
+--   1. valid_pairs: zamiast osobnego, NAKLADAJACEGO SIE NA SIEBIE okna
+--      dla kazdej sasiadujacej pary dni (self-join / LEAD(), d1/d1+1),
+--      teraz wykrywa CIAGLE BLOKI dni z TYP_DNIA IS NOT NULL (technika
+--      "gaps and islands": dni_wolne.grp = dzien_mies - ROW_NUMBER()),
+--      i liczy JEDNO okno na caly blok (MIN/MAX(dzien_mies) = d1/d_last).
+--      Blad w V2 powodowal, ze przy bloku dluzszym niz 2 dni (np. urlop
+--      obok weekendu) te same godziny odpoczynku byly liczone
+--      wielokrotnie (raz na kazda sasiadujaca pare dni w bloku) i
+--      sumowane w suma_roznic_h, co zawyzalo wynik nawet 10-krotnie.
+--   2. okna: koniec okna liczony od d_last + 1 (dzien po calym bloku)
+--      zamiast d1 + 2 (co zakladalo zawsze dokladnie 2-dniowy blok).
+--   3. Jeden odczyt kalendarza (kal_all) zamiast dwoch osobnych skanow
+--      NT_KP_KDR_KALENDARZE_PRAC - kalendarze i kal_base sa teraz
+--      tylko filtrami na kal_all.
+--   4. suma_roznic_h sformatowane przez TO_CHAR(..., 'FM999999990.00')
+--      - zawsze dokladnie 2 miejsca po przecinku w wyniku raportu.
+--
+-- UWAGA: uruchomione samodzielnie jako zwykly SQL rzuci ORA-01422
+-- (wiele wierszy). Ten zapis ma sens WYLACZNIE w kontekscie silnika
+-- raportu, ktory obsluguje pobieranie wiersz po wierszu.
 -- =====================================================================
 SELECT lp,
        imie,
@@ -41,46 +67,51 @@ SELECT lp,
        suma_roznic_h,
        zdarzenia_wtet_id_18,
        zlecone_nadgodziny
--- INTO        V_lp,
---        V_imie,
---        V_nazwisko,
---        V_nr_ew,
---        V_nr_karty,
---        V_jednostka_organizacyjna,
---        V_mpk,
---        V_stanowisko,
---        V_okres_rozliczeniowy,
---        V_p_d_okresu_rozliczeniowego,
---        V_p_d_tygodnia,
---        V_zakres_tygodnia,
---        V_odejmowanie,
---        V_suma_roznic_h,
---        V_zdarzenia_wtet_id_18,
---        V_zlecone_nadgodziny
-FROM  (
+
+       INTO
+       V_lp,
+       V_imie,
+       V_nazwisko,
+       V_nr_ew,
+       V_nr_karty,
+       V_jednostka_organizacyjna,
+       V_mpk,
+       V_stanowisko,
+       V_okres_rozliczeniowy,
+       V_p_d_okresu_rozliczeniowego,
+       V_p_d_tygodnia,
+       V_zakres_tygodnia,
+       V_odejmowanie,
+       V_suma_roznic_h,
+       V_zdarzenia_wtet_id_18,
+       V_zlecone_nadgodziny
+
+FROM (
 WITH
     parametry AS (
-        SELECT  TO_DATE('01-06-2026', 'DD-MM-YYYY') AS data_od,
-                TO_DATE('30-06-2026', 'DD-MM-YYYY') AS data_do
+        SELECT  TRUNC(to_date('^$DATA_OD^', '^$P_DATE_FORMAT^'), 'IW')     AS data_od,
+                TRUNC(to_date('^$DATA_DO^', '^$P_DATE_FORMAT^'), 'IW') + 6 AS data_do
         FROM dual
     ),
-    -- Osoby zatrudnione w calym okresie (jak w wersji dobowej v2)
     pracownicy AS (
         SELECT /*+ MATERIALIZE */ prac.prac_id AS prac_id
         FROM t_prac prac
         CROSS JOIN parametry prm
         WHERE prac.DATA_ZATR <= prm.data_od
           AND (prac.DATA_ROZW IS NULL OR prac.DATA_ROZW >= prm.data_do)
-        --  AND prac.nr_ew = '45041478'   -- opcjonalnie: pojedynczy pracownik
     ),
-    kalendarze AS (
+    kal_all AS (
         SELECT /*+ MATERIALIZE */
-               k.id, k.prac_id, k.dzien_mies
+               k.id, k.prac_id, k.dzien_mies, k.typ_dnia, k.czas_do, k.czas_od
         FROM NT_KP_KDR_KALENDARZE_PRAC k
         CROSS JOIN parametry prm
-        WHERE k.TYP_DNIA = 'W'
-          AND k.DZIEN_MIES BETWEEN prm.data_od AND prm.data_do
+        WHERE k.DZIEN_MIES BETWEEN prm.data_od AND prm.data_do
           AND k.prac_id IN (SELECT prac_id FROM pracownicy)
+    ),
+    kalendarze AS (
+        SELECT id, prac_id, dzien_mies
+        FROM kal_all
+        WHERE typ_dnia = 'W'
     ),
     prac_hr AS (
         SELECT /*+ MATERIALIZE */
@@ -130,23 +161,28 @@ WITH
     ),
     kal_base AS (
         SELECT /*+ MATERIALIZE */
-               kb.prac_id, kb.dzien_mies, kb.typ_dnia, kb.czas_do, kb.czas_od
-        FROM NT_KP_KDR_KALENDARZE_PRAC kb
-        CROSS JOIN parametry prm
-        WHERE kb.dzien_mies BETWEEN prm.data_od AND prm.data_do
-          AND kb.prac_id IN (SELECT prac_id FROM prac_hr)
+               ka.prac_id, ka.dzien_mies, ka.typ_dnia, ka.czas_do, ka.czas_od
+        FROM kal_all ka
+        WHERE ka.prac_id IN (SELECT prac_id FROM prac_hr)
     ),
+    dni_wolne AS (
+        SELECT prac_id, dzien_mies,
+               dzien_mies - ROW_NUMBER() OVER (PARTITION BY prac_id ORDER BY dzien_mies) AS grp
+        FROM kal_base
+        WHERE typ_dnia IS NOT NULL
+    ),
+    -- Blok CIAGLYCH dni wolnych (>=2 dni pod rzad) liczony JEDEN RAZ,
+    -- zamiast osobnego, nakladajacego sie okna dla kazdej sasiadujacej
+    -- pary dni w tym samym bloku (co powodowalo wielokrotne liczenie
+    -- tych samych godzin przy blokach dluzszych niz 2 dni, np. urlop).
     valid_pairs AS (
         SELECT /*+ MATERIALIZE */
-               k1.prac_id, k1.dzien_mies AS d1
-        FROM kal_base k1
-        CROSS JOIN parametry prm
-        JOIN kal_base k2
-             ON  k2.prac_id    = k1.prac_id
-             AND k2.dzien_mies = k1.dzien_mies + 1
-             AND k2.typ_dnia  IS NOT NULL
-        WHERE k1.typ_dnia IS NOT NULL
-          AND k1.dzien_mies BETWEEN prm.data_od AND prm.data_do
+               prac_id,
+               MIN(dzien_mies) AS d1,
+               MAX(dzien_mies) AS d_last
+        FROM dni_wolne
+        GROUP BY prac_id, grp
+        HAVING COUNT(*) >= 2
     ),
     zdarzenia AS (
         SELECT /*+ MATERIALIZE */
@@ -175,8 +211,6 @@ WITH
         WHERE n.prac_id IN (SELECT prac_id FROM prac_hr)
           AND n.data    BETWEEN prm.data_od AND prm.data_do
     ),
-    -- Okno odpoczynku weekendowego: od konca pracy PRZED (d1-1) do poczatku
-    -- pracy PO (d1+2). Jedno okno na pare wolnych dni.
     okna AS (
         SELECT vp.prac_id, vp.d1,
                TRUNC(k_przed.dzien_mies) + (k_przed.czas_do - TRUNC(k_przed.czas_do)) AS k_przed_dt,
@@ -187,11 +221,8 @@ WITH
              AND k_przed.dzien_mies = vp.d1 - 1
         LEFT JOIN kal_base k_po
              ON  k_po.prac_id    = vp.prac_id
-             AND k_po.dzien_mies = vp.d1 + 2
+             AND k_po.dzien_mies = vp.d_last + 1
     ),
-    -- Wszystkie aktywnosci PRZERYWAJACE odpoczynek (dyzury wtet_id=18 +
-    -- zlecone nadgodziny), przyciete do okna [k_przed_dt, k_po_dt].
-    -- Warunek nachodzenia na okno: koniec > start okna AND start < koniec okna.
     aktywnosci AS (
         SELECT o.prac_id, o.d1, o.k_przed_dt, o.k_po_dt,
                GREATEST(z.z_od_dt, o.k_przed_dt) AS a_od,
@@ -211,9 +242,6 @@ WITH
              AND n.n_do_dt  > o.k_przed_dt
              AND n.n_od_dt  < o.k_po_dt
     ),
-    -- Dla kazdej aktywnosci: dlugosc WOLNEGO odcinka konczacego sie w jej
-    -- poczatku = a_od - (max koniec wszystkich wczesniejszych aktywnosci,
-    -- albo poczatek okna gdy pierwsza). Obsluguje aktywnosci nachodzace.
     segmenty AS (
         SELECT prac_id, d1, k_przed_dt, k_po_dt, a_od, a_do,
                (a_od - COALESCE(
@@ -222,8 +250,6 @@ WITH
                     k_przed_dt)) * 24 AS gap_przed_h
         FROM aktywnosci
     ),
-    -- Najdluzszy ciagly odpoczynek w oknie = max(odcinki wewnetrzne/wiodace,
-    -- odcinek koncowy: koniec okna - ostatnia aktywnosc).
     odp_agg AS (
         SELECT prac_id, d1,
                GREATEST(MAX(gap_przed_h), (MAX(k_po_dt) - MAX(a_do)) * 24) AS roznica_h
@@ -237,13 +263,12 @@ WITH
                TO_CHAR(o.k_przed_dt, 'dd-mm-yyyy HH24:MI')
                    || ' - '
                    || TO_CHAR(o.k_po_dt, 'dd-mm-yyyy HH24:MI') AS odejmowanie,
-               -- brak aktywnosci -> pelne okno; sa aktywnosci -> najdluzszy
-               -- ciagly wolny odcinek (dyzury/nadgodziny przerywaja odpoczynek)
                ROUND(NVL(oa.roznica_h, (o.k_po_dt - o.k_przed_dt) * 24), 2) AS roznica_h
         FROM okna o
         LEFT JOIN odp_agg oa
                ON oa.prac_id = o.prac_id
               AND oa.d1      = o.d1
+        WHERE o.k_po_dt IS NOT NULL
     ),
     pary_agg AS (
         SELECT par.prac_id,
@@ -271,8 +296,8 @@ WITH
         FROM zdarzenia ze
         JOIN pary par
              ON  par.prac_id = ze.prac_id
-             AND ze.z_do_dt  > par.k_przed_dt   -- tylko dyzury przerywajace
-             AND ze.z_od_dt  < par.k_po_dt      -- odpoczynek w oknie (jak w aktywnosci)
+             AND ze.z_do_dt  > par.k_przed_dt
+             AND ze.z_od_dt  < par.k_po_dt
         JOIN okres o
              ON  o.prac_id  = par.prac_id
              AND par.d1    >= o.poczatek_okresu
@@ -292,8 +317,8 @@ WITH
         FROM nadgodziny n
         JOIN pary par
              ON  par.prac_id = n.prac_id
-             AND n.n_do_dt   > par.k_przed_dt   -- tylko nadgodziny przerywajace
-             AND n.n_od_dt   < par.k_po_dt      -- odpoczynek w oknie (jak w aktywnosci)
+             AND n.n_do_dt   > par.k_przed_dt
+             AND n.n_od_dt   < par.k_po_dt
         JOIN okres o
              ON  o.prac_id  = par.prac_id
              AND par.d1    >= o.poczatek_okresu
@@ -325,7 +350,7 @@ SELECT
                'DD-MM-YYYY'
            ) AS zakres_tygodnia,
        pa.odejmowanie    AS odejmowanie,
-       pa.suma_roznica_h AS suma_roznic_h,
+       TO_CHAR(pa.suma_roznica_h, 'FM999999990.00') AS suma_roznic_h,
        za.z_zdarzenia    AS zdarzenia_wtet_id_18,
        na.n_nadgodziny   AS zlecone_nadgodziny
 FROM prac_hr p
@@ -349,5 +374,6 @@ LEFT JOIN nadgodziny_agg na
        AND na.poczatek_okresu = o.poczatek_okresu
        AND na.nr_tygodnia    = t.nr
 WHERE  pa.odejmowanie IS NOT NULL
+  AND (za.prac_id IS NOT NULL OR na.prac_id IS NOT NULL)
 ORDER BY p.nazwisko, p.imie, o.poczatek_okresu, t.nr
 );
