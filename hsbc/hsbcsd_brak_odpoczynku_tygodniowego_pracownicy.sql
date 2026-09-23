@@ -2,6 +2,8 @@
 -- Nieprzerwany odpoczynek tygodniowy - Wersja 2 (pracownicy)
 -- VERSION 3 - scalenie z hsbc_brak_odpoczynku_tygodniowego_optim.sql
 -- (jedna, ostateczna wersja pliku; usunieto zduplikowany plik _optim).
+-- VERSION 4 - poprawka blednego sumowania roznica_h przy wielu
+-- niepowiazanych blokach dni wolnych w jednym tygodniu (patrz nizej).
 --
 -- Konwencja jak w hsbcsd_brak_odpoczynku_dobowego.sql:
 --   * CTE 'parametry' (data_od / data_do) - jedno miejsce na daty,
@@ -19,15 +21,20 @@
 --     iteruje po wierszach i mapuje kolumny na zmienne v_*.
 --
 -- ODPOCZYNEK Z UWZGL. DYZUROW I NADGODZIN (jak w raporcie dobowym):
---   suma_roznic_h = suma NAJDLUZSZYCH ciaglych odcinkow odpoczynku w
---   oknach dni wolnych w danym tygodniu. Dyzury (KP_RCP_WORK_TIME_EVENTS
---   wtet_id=18) oraz zlecone nadgodziny (KP_RCP_ZLEC_NADG_PRAC) PRZERYWAJA
---   odpoczynek - przyciete do okna, dziela je na odcinki, brany jest max.
---   CTE: okna -> aktywnosci -> segmenty -> odp_agg -> pary.
+--   Kazdy CIAGLY BLOK dni wolnych (>=2 dni pod rzad) to WLASNY wiersz
+--   wyniku - suma_roznic_h to dlugosc NAJDLUZSZEGO ciaglego odcinka
+--   odpoczynku W TYM JEDNYM oknie (nie suma po wielu blokach - jesli w
+--   tym samym tygodniu jest wiecej niz jeden blok dni wolnych, kazdy
+--   dostaje osobny wiersz, patrz VERSION 4 nizej). Dyzury
+--   (KP_RCP_WORK_TIME_EVENTS wtet_id=18) oraz zlecone nadgodziny
+--   (KP_RCP_ZLEC_NADG_PRAC) PRZERYWAJA odpoczynek - przyciete do okna,
+--   dziela je na odcinki, brany jest max. CTE: okna -> aktywnosci ->
+--   segmenty -> odp_agg -> pary.
 --   Kolumny wyswietlane (zdarzenia_wtet_id_18, zlecone_nadgodziny) sa
---   zawezone do TEGO SAMEGO okna co obliczenia (warunek nachodzenia
---   z_do>k_przed AND z_od<k_po), wiec pokazuja tylko aktywnosci realnie
---   przerywajace odpoczynek.
+--   zawezone do TEGO SAMEGO okna/bloku co obliczenia (dolaczane po
+--   prac_id+d1, warunek nachodzenia z_do>k_przed AND z_od<k_po), wiec
+--   pokazuja tylko aktywnosci realnie przerywajace TEN KONKRETNY blok
+--   odpoczynku.
 --
 -- ZMIANY W VERSION 3 (najwazniejsze - poprawka bledu z V2):
 --   1. valid_pairs: zamiast osobnego, NAKLADAJACEGO SIE NA SIEBIE okna
@@ -46,6 +53,30 @@
 --      tylko filtrami na kal_all.
 --   4. suma_roznic_h sformatowane przez TO_CHAR(..., 'FM999999990.00')
 --      - zawsze dokladnie 2 miejsca po przecinku w wyniku raportu.
+--
+-- ZMIANY W VERSION 4 (poprawka bledu z V3):
+--   pary_agg sumowal roznica_h (SUM) po WSZYSTKICH blokach dni wolnych
+--   (par.d1), ktorych d1 wpadal w dany tydzien. Jesli w tygodniu
+--   wystapily DWA niepowiazane ze soba bloki dni wolnych (np. weekend +
+--   dluzszy blok typu urlop w tym samym tygodniu), ich godziny byly
+--   BLEDNIE SUMOWANE, mimo ze to odrebne okresy odpoczynku - zawyzalo
+--   to suma_roznic_h (np. 150h zamiast realnych ~62h dla samego
+--   weekendu).
+--   PIERWSZA proba poprawki (wybor JEDNEGO bloku o najwiekszej
+--   roznica_h na tydzien, przez ROW_NUMBER) okazala sie rowniez bledna:
+--   gdy dluzszy, NIEPRZERWANY blok (np. urlop bez zadnych dyzurow/
+--   nadgodzin) mial wieksza roznica_h niz krotszy blok faktycznie
+--   PRZERWANY przez zlecenie nadgodzin, wygrywal ten dluzszy - w efekcie
+--   caly wiersz z rzeczywistym naruszeniem (krotszy, przerwany blok)
+--   znikal z wyniku (WHERE wymaga za/na IS NOT NULL).
+--   OSTATECZNA poprawka: pary_agg NIE agreguje juz blokow do jednego
+--   wiersza na tydzien w zaden sposob (ani SUM, ani "zwyciezca") -
+--   KAZDY blok dni wolnych (klucz: prac_id + d1) jest WLASNYM wierszem
+--   wyniku, z wlasna, poprawnie dopasowana (po d1) lista zdarzen i
+--   nadgodzin. nr_tygodnia to wylacznie etykieta prezentacyjna
+--   ("pierwszy dzien tygodnia" / "zakres tygodnia"), nie klucz
+--   agregacji - jesli w jednym tygodniu jest wiecej niz jeden blok,
+--   raport pokaze dla niego wiecej niz jeden wiersz.
 --
 -- UWAGA: uruchomione samodzielnie jako zwykly SQL rzuci ORA-01422
 -- (wiele wierszy). Ten zapis ma sens WYLACZNIE w kontekscie silnika
@@ -270,61 +301,63 @@ WITH
               AND oa.d1      = o.d1
         WHERE o.k_po_dt IS NOT NULL
     ),
+    -- W obrebie JEDNEGO tygodnia moga wystapic DWA (lub wiecej)
+    -- niepowiazane ze soba bloki dni wolnych (np. weekend + osobny,
+    -- dluzszy blok typu urlop w tym samym tygodniu). Kazdy taki blok to
+    -- ODREBNE okno odpoczynku z WLASNYMI, przerywajacymi je zdarzeniami
+    -- (dyzury/nadgodziny) - nie wolno ich ani sumowac (SUM zawyzalo
+    -- wynik), ani wybierac "zwycieskiego" bloku per tydzien (to gubilo
+    -- wiersze/zdarzenia dla bloku, ktory akurat NIE mial najwiekszej
+    -- roznica_h, np. gdy dluzszy, nieprzerwany blok "wygrywal" z
+    -- krotszym blokiem faktycznie przerwanym przez zlecenie). Dlatego
+    -- kazdy blok (pary, klucz: prac_id+d1) zostaje WLASNYM wierszem
+    -- wyniku; nr_tygodnia to tylko etykieta, do ktorej "kolumny
+    -- tygodnia" nalezy dany blok - zdarzenia/nadgodziny sa dolaczane
+    -- PER BLOK (po d1), nie per tydzien.
     pary_agg AS (
         SELECT par.prac_id,
+               par.d1,
+               par.k_przed_dt,
+               par.k_po_dt,
                o.poczatek_okresu,
                FLOOR((par.d1 - o.poczatek_okresu) / 7) AS nr_tygodnia,
-               MIN(par.odejmowanie)                      AS odejmowanie,
-               ROUND(SUM(par.roznica_h), 2)              AS suma_roznica_h
+               par.odejmowanie,
+               ROUND(par.roznica_h, 2) AS suma_roznica_h
         FROM pary par
         JOIN okres o
              ON  o.prac_id  = par.prac_id
              AND par.d1    >= o.poczatek_okresu
              AND par.d1    <= o.koniec_okresu
-        GROUP BY par.prac_id, o.poczatek_okresu,
-               FLOOR((par.d1 - o.poczatek_okresu) / 7)
     ),
     zdarzenia_agg AS (
         SELECT ze.prac_id,
-               o.poczatek_okresu,
-               FLOOR((par.d1 - o.poczatek_okresu) / 7)  AS nr_tygodnia,
+               pa.d1,
                LISTAGG(
                    TO_CHAR(ze.workday_date, 'DD-MM-YYYY')
                        || ' ' || ze.z_godz_od || '-' || ze.z_godz_do,
                    ', '
                ) WITHIN GROUP (ORDER BY ze.workday_date) AS z_zdarzenia
         FROM zdarzenia ze
-        JOIN pary par
-             ON  par.prac_id = ze.prac_id
-             AND ze.z_do_dt  > par.k_przed_dt
-             AND ze.z_od_dt  < par.k_po_dt
-        JOIN okres o
-             ON  o.prac_id  = par.prac_id
-             AND par.d1    >= o.poczatek_okresu
-             AND par.d1    <= o.koniec_okresu
-        GROUP BY ze.prac_id, o.poczatek_okresu,
-               FLOOR((par.d1 - o.poczatek_okresu) / 7)
+        JOIN pary_agg pa
+             ON  pa.prac_id = ze.prac_id
+             AND ze.z_do_dt > pa.k_przed_dt
+             AND ze.z_od_dt < pa.k_po_dt
+        GROUP BY ze.prac_id, pa.d1
     ),
     nadgodziny_agg AS (
         SELECT n.prac_id,
-               o.poczatek_okresu,
-               FLOOR((par.d1 - o.poczatek_okresu) / 7)  AS nr_tygodnia,
+               pa.d1,
                LISTAGG(
                    TO_CHAR(n.data, 'DD-MM-YYYY')
                        || ' ' || n.n_godz_od || '-' || n.n_godz_do,
                    ', '
                ) WITHIN GROUP (ORDER BY n.data)          AS n_nadgodziny
         FROM nadgodziny n
-        JOIN pary par
-             ON  par.prac_id = n.prac_id
-             AND n.n_do_dt   > par.k_przed_dt
-             AND n.n_od_dt   < par.k_po_dt
-        JOIN okres o
-             ON  o.prac_id  = par.prac_id
-             AND par.d1    >= o.poczatek_okresu
-             AND par.d1    <= o.koniec_okresu
-        GROUP BY n.prac_id, o.poczatek_okresu,
-               FLOOR((par.d1 - o.poczatek_okresu) / 7)
+        JOIN pary_agg pa
+             ON  pa.prac_id = n.prac_id
+             AND n.n_do_dt  > pa.k_przed_dt
+             AND n.n_od_dt  < pa.k_po_dt
+        GROUP BY n.prac_id, pa.d1
     )
 
 SELECT
@@ -366,14 +399,32 @@ LEFT JOIN pary_agg pa
        AND pa.poczatek_okresu = o.poczatek_okresu
        AND pa.nr_tygodnia    = t.nr
 LEFT JOIN zdarzenia_agg za
-       ON  za.prac_id        = p.prac_id
-       AND za.poczatek_okresu = o.poczatek_okresu
-       AND za.nr_tygodnia    = t.nr
+       ON  za.prac_id = pa.prac_id
+       AND za.d1      = pa.d1
 LEFT JOIN nadgodziny_agg na
-       ON  na.prac_id        = p.prac_id
-       AND na.poczatek_okresu = o.poczatek_okresu
-       AND na.nr_tygodnia    = t.nr
+       ON  na.prac_id = pa.prac_id
+       AND na.d1      = pa.d1
 WHERE  pa.odejmowanie IS NOT NULL
   AND (za.prac_id IS NOT NULL OR na.prac_id IS NOT NULL)
 ORDER BY p.nazwisko, p.imie, o.poczatek_okresu, t.nr
 );
+
+-- =====================================================================
+-- ZMIANY W VERSION 5 (modyfikacja obliczenia przerwy tygodniowej):
+--   pary_agg wczesniej agregowal blok(i) dni wolnych do JEDNEGO wiersza
+--   na tydzien - najpierw przez SUM(roznica_h) po wszystkich blokach
+--   (co zawyzalo wynik przy dwoch niepowiazanych blokach w tym samym
+--   tygodniu), potem przez wybor JEDNEGO "zwycieskiego" bloku o
+--   najwiekszej roznica_h (co z kolei gubilo caly wiersz, gdy dluzszy,
+--   nieprzerwany blok wygrywal z krotszym blokiem faktycznie
+--   przerwanym przez zlecenie/dyzur - a to wlasnie ten drugi stanowil
+--   realne naruszenie).
+--   Ostateczne rozwiazanie: pary_agg NIE agreguje juz blokow dni
+--   wolnych w zaden sposob - kazdy ciagly blok (klucz: prac_id + d1)
+--   jest wlasnym wierszem wyniku, z wlasna lista zdarzen/nadgodzin
+--   dolaczana PER BLOK (join po d1), a nie per tydzien. nr_tygodnia
+--   pozostaje wylacznie etykieta prezentacyjna ("pierwszy dzien
+--   tygodnia" / "zakres tygodnia") - jesli w jednym tygodniu wystapi
+--   wiecej niz jeden blok z realnym naruszeniem, raport pokaze dla
+--   niego wiecej niz jeden wiersz, zamiast gubic informacje.
+-- =====================================================================
