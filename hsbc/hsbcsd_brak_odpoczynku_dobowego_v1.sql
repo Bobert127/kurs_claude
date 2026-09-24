@@ -63,13 +63,28 @@ FROM (
                     TO_DATE('^$DATA_DO^', '^$P_DATE_FORMAT^') AS data_do
             FROM dual
         ),
-        kalendarz_src AS (
+        kalendarz_src_raw AS (
             SELECT /*+ MATERIALIZE */
                    k.prac_id, k.id, k.dzien_mies, k.czas_od, k.czas_do, k.typ_dnia
             FROM NT_KP_KDR_KALENDARZE_PRAC k
             CROSS JOIN parametry p
             WHERE k.dzien_mies >= p.data_od
               AND k.dzien_mies <  p.data_do + 2
+        ),
+        -- TYMCZASOWA LATA: dla (prac_id, dzien_mies) potrafia wystapic 2 wiersze
+        -- kalendarza (zaobserwowane dla dnia granicznego zakresu) - bez deduplikacji
+        -- LEAD w kalendarz/next_* losowo/blednie "przeskakuje" na duplikat tego
+        -- samego dnia zamiast prawdziwego kolejnego dnia, co dawalo ujemny
+        -- (np. -8) odpoczynek mimo braku dyzuru/zlecenia. Zalozenie do potwierdzenia:
+        -- wiersz z najwyzszym id traktujemy jako obowiazujacy dla danego dnia.
+        kalendarz_src AS (
+            SELECT prac_id, id, dzien_mies, czas_od, czas_do, typ_dnia
+            FROM (
+                SELECT r.*,
+                       ROW_NUMBER() OVER (PARTITION BY r.prac_id, r.dzien_mies ORDER BY r.id DESC) AS rn
+                FROM kalendarz_src_raw r
+            )
+            WHERE rn = 1
         ),
         kalendarz AS (
             SELECT /*+ MATERIALIZE */
