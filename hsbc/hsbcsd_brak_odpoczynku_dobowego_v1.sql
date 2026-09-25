@@ -1,8 +1,12 @@
 -- =====================================================================
--- Brak odpoczynku dobowego (11h) - wersja WGRANA (bez CTE zlecenia_all,
--- bez korekty przejscia przez polnoc dla z.godz_od/z.godz_do).
--- Rozni sie od hsbcsd_brak_odpoczynku_dobowego.sql (VERSION 2 gap-based),
--- ktora ma osobny CTE zlecenia_all z korekta dnia.
+-- Brak odpoczynku dobowego (11h) - wersja WGRANA, silnik oparty o
+-- najdluzsza nieprzerwana przerwe w oknie [koniec zmiany .. prawdziwy
+-- poczatek nastepnej zmiany] - uwzglednia KAZDE zlecenie i KAZDY dyzur
+-- osobno (z korekta przejscia przez polnoc dla z.godz_od/z.godz_do),
+-- zamiast pojedynczej galezi CASE wybierajacej jedno zdarzenie
+-- referencyjne (stara logika gubila najdluzsza przerwe, gdy w oknie
+-- odpoczynku wystapil i dyzur, i zlecenie tego samego dnia).
+-- Zweryfikowano na danych produkcyjnych (prac. 45023264, 45159350).
 --
 -- UWAGA: uruchomione samodzielnie jako zwykly SQL rzuci ORA-01422 (wiele
 -- wierszy). Ten zapis ma sens WYLACZNIE w kontekscie silnika raportu,
@@ -103,44 +107,119 @@ FROM (
               AND k.dzien_mies <  p.data_do + 2
               AND k.typ_dnia IS NULL
         ),
-        zlecenia_aggr AS (
-            SELECT /*+ MATERIALIZE NO_MERGE */
-                   z.prac_id, z.kali_id,
-                   COUNT(z.id) AS ile_zlecen,
-                   MIN(z.godz_od) AS pierwsze_godz_od,
-                   MAX(z.godz_od) KEEP (DENSE_RANK LAST ORDER BY z.godz_do, z.id) AS godz_od,
-                   MAX(z.godz_do) KEEP (DENSE_RANK LAST ORDER BY z.godz_do, z.id) AS godz_do
+        -- podzbior wierszy, dla ktorych istnieje prawdziwa nastepna zmiana -
+        -- tylko dla nich ma sens liczenie silnika przerw (inaczej brak
+        -- sensownej gornej granicy okna odpoczynku)
+        kalendarz_calc AS (
+            SELECT k.*
+            FROM kalendarz_raport k
+            WHERE k.next_czas_od IS NOT NULL
+              AND k.next_typ_dnia IS NULL
+        ),
+        zlecenia_all AS (
+            SELECT z.prac_id, z.kali_id, z.id,
+                   CASE WHEN (z.godz_od - TRUNC(z.godz_od)) < (k.czas_od - TRUNC(k.czas_od))
+                        THEN TRUNC(k.dzien_mies) + 1 + (z.godz_od - TRUNC(z.godz_od))
+                        ELSE TRUNC(k.dzien_mies)     + (z.godz_od - TRUNC(z.godz_od))
+                   END AS godz_od_real,
+                   CASE WHEN (z.godz_od - TRUNC(z.godz_od)) < (k.czas_od - TRUNC(k.czas_od))
+                        THEN TRUNC(k.dzien_mies) + 1 + (z.godz_do - TRUNC(z.godz_do))
+                        ELSE TRUNC(k.dzien_mies)     + (z.godz_do - TRUNC(z.godz_do))
+                   END AS godz_do_real
             FROM KP_RCP_ZLEC_NADG_PRAC z
             JOIN kalendarz_raport k
               ON k.prac_id = z.prac_id
              AND k.id      = z.kali_id
             WHERE (Z.CLASSIFIED_SECONDS_24 = 0 OR Z.CLASSIFIED_SECONDS_24 IS NULL)
-            GROUP BY z.prac_id, z.kali_id
+        ),
+        zlecenia_aggr AS (
+            SELECT prac_id, kali_id,
+                   COUNT(id) AS ile_zlecen,
+                   MIN(godz_od_real) AS pierwsze_godz_od,
+                   MAX(godz_od_real) KEEP (DENSE_RANK LAST ORDER BY godz_do_real, id) AS godz_od,
+                   MAX(godz_do_real) KEEP (DENSE_RANK LAST ORDER BY godz_do_real, id) AS godz_do
+            FROM zlecenia_all
+            GROUP BY prac_id, kali_id
+        ),
+        zdarzenia_all AS (
+            SELECT k.prac_id, k.id AS kali_id,
+                   zd.date_time_from, zd.date_time_to
+            FROM KP_RCP_WORK_TIME_EVENTS zd
+            JOIN kalendarz_raport k
+              ON k.prac_id = zd.prac_id
+             AND k.dzien_mies = TRUNC(zd.workday_date)
+            WHERE zd.wtet_id = 18
         ),
         zdarzenia_aggr AS (
-            SELECT /*+ MATERIALIZE NO_MERGE */
-                   zd.prac_id,
-                   TRUNC(zd.workday_date) AS workday_date,
+            SELECT prac_id, kali_id,
                    COUNT(*) AS ile_zdarzen,
-                   MAX(zd.date_time_from) KEEP (DENSE_RANK LAST ORDER BY zd.date_time_to, zd.date_time_from) AS date_time_from,
-                   MAX(zd.date_time_to)   KEEP (DENSE_RANK LAST ORDER BY zd.date_time_to, zd.date_time_from) AS date_time_to
-            FROM KP_RCP_WORK_TIME_EVENTS zd
-            CROSS JOIN parametry p
-            WHERE zd.wtet_id = 18
-              AND zd.workday_date >= p.data_od
-              AND zd.workday_date <  p.data_do + 2
-            GROUP BY zd.prac_id, TRUNC(zd.workday_date)
+                   MAX(date_time_from) KEEP (DENSE_RANK LAST ORDER BY date_time_to, date_time_from) AS date_time_from,
+                   MAX(date_time_to)   KEEP (DENSE_RANK LAST ORDER BY date_time_to, date_time_from) AS date_time_to
+            FROM zdarzenia_all
+            GROUP BY prac_id, kali_id
+        ),
+        intervals AS (
+            SELECT k.prac_id, k.id AS kali_id,
+                   TRUNC(k.dzien_mies) + (k.czas_od - TRUNC(k.czas_od)) AS start_ts,
+                   TRUNC(k.dzien_mies) + (k.czas_do - TRUNC(k.czas_do)) AS end_ts
+            FROM kalendarz_calc k
+
+            UNION ALL
+
+            SELECT za.prac_id, za.kali_id, za.godz_od_real, za.godz_do_real
+            FROM zlecenia_all za
+            JOIN kalendarz_calc k ON k.prac_id = za.prac_id AND k.id = za.kali_id
+
+            UNION ALL
+
+            SELECT zda.prac_id, zda.kali_id, zda.date_time_from, zda.date_time_to
+            FROM zdarzenia_all zda
+            JOIN kalendarz_calc k ON k.prac_id = zda.prac_id AND k.id = zda.kali_id
+
+            UNION ALL
+
+            /* prawdziwy poczatek nastepnej zmiany - gorna granica okna odpoczynku */
+            SELECT k.prac_id, k.id AS kali_id,
+                   TRUNC(k.next_dzien_mies) + (k.next_czas_od - TRUNC(k.next_czas_od)) AS start_ts,
+                   TRUNC(k.next_dzien_mies) + (k.next_czas_od - TRUNC(k.next_czas_od)) AS end_ts
+            FROM kalendarz_calc k
+        ),
+        ordered AS (
+            SELECT prac_id, kali_id, start_ts, end_ts,
+                   MAX(end_ts) OVER (PARTITION BY prac_id, kali_id
+                                      ORDER BY start_ts, end_ts
+                                      ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS prev_max_end
+            FROM intervals
+            WHERE start_ts IS NOT NULL
+        ),
+        gaps AS (
+            /*tylko realne (dodatnie) przerwy - stykajace sie przedzialy (koniec = poczatek) to NIE przerwa*/
+            SELECT prac_id, kali_id,
+                   prev_max_end AS gap_od,
+                   start_ts     AS gap_do,
+                   ROUND((start_ts - prev_max_end) * 24, 2) AS gap_godziny
+            FROM ordered
+            WHERE prev_max_end IS NOT NULL
+              AND start_ts > prev_max_end
+        ),
+        gap_max AS (
+            /*najdluzsza nieprzerwana przerwa w oknie miedzy zmianami - ona musi miec >= 11h*/
+            SELECT prac_id, kali_id,
+                   MAX(gap_godziny) AS godziny_odpoczynku_calc,
+                   MAX(gap_od) KEEP (DENSE_RANK FIRST ORDER BY gap_godziny DESC, gap_od) AS przerwa_od,
+                   MAX(gap_do) KEEP (DENSE_RANK FIRST ORDER BY gap_godziny DESC, gap_od) AS przerwa_do
+            FROM gaps
+            GROUP BY prac_id, kali_id
         ),
         dane AS (
-            SELECT /*+ LEADING(k p) USE_HASH(p z zd) */
+            SELECT /*+ LEADING(k p) USE_HASH(p z zd gm) */
                    p.imie, p.nazwisko, p.nr_ew AS numer_ewidencyjny, p.nr_karty,
                    k.dzien_mies, k.czas_od, k.czas_do,
                    k.next_czas_od, k.next_dzien_mies, k.next_typ_dnia,
                    z.pierwsze_godz_od, z.godz_od, z.godz_do, z.ile_zlecen,
                    zd.date_time_from, zd.date_time_to, zd.ile_zdarzen,
-                   TRUNC(k.dzien_mies)      + (k.czas_do     - TRUNC(k.czas_do))     AS koniec_pracy_dt,
-                   TRUNC(k.next_dzien_mies) + (k.next_czas_od - TRUNC(k.next_czas_od)) AS poczatek_nast_pracy_dt,
-                   TRUNC(k.dzien_mies)      + (z.godz_do     - TRUNC(z.godz_do))     AS koniec_zlecenia_dt
+                   gm.godziny_odpoczynku_calc AS gap_godziny,
+                   gm.przerwa_od, gm.przerwa_do
             FROM kalendarz_raport k
             JOIN t_prac p
               ON p.prac_id = k.prac_id
@@ -149,23 +228,17 @@ FROM (
              AND z.kali_id = k.id
             LEFT JOIN zdarzenia_aggr zd
               ON zd.prac_id = k.prac_id
-             AND zd.workday_date = k.dzien_mies
+             AND zd.kali_id = k.id
+            LEFT JOIN gap_max gm
+              ON gm.prac_id = k.prac_id
+             AND gm.kali_id = k.id
         ),
         wyliczenia AS (
             SELECT d.*,
                    CASE
                        WHEN d.next_typ_dnia IS NOT NULL THEN 16
                        WHEN d.next_czas_od  IS NULL     THEN NULL
-                       WHEN d.date_time_to IS NOT NULL
-                            AND d.date_time_to >= d.koniec_pracy_dt
-                            AND ( d.godz_od IS NULL
-                               OR (d.godz_od - TRUNC(d.godz_od)) < (d.czas_do - TRUNC(d.czas_do))
-                               OR d.date_time_to >= d.koniec_zlecenia_dt )
-                           THEN ROUND((d.poczatek_nast_pracy_dt - d.date_time_to) * 24, 2)
-                       WHEN d.godz_od IS NOT NULL
-                            AND (d.godz_od - TRUNC(d.godz_od)) >= (d.czas_do - TRUNC(d.czas_do))
-                           THEN ROUND((d.poczatek_nast_pracy_dt - d.koniec_zlecenia_dt) * 24, 2)
-                       ELSE ROUND((d.poczatek_nast_pracy_dt - d.koniec_pracy_dt) * 24, 2)
+                       ELSE d.gap_godziny
                    END AS godziny_odpoczynku_calc
             FROM dane d
         )
@@ -204,22 +277,12 @@ FROM (
                        THEN 'OK - następny dzień wolny'
                    WHEN next_czas_od IS NULL
                        THEN 'BRAK NASTĘPNEJ ZMIANY'
-                   WHEN date_time_to IS NOT NULL
-                        AND date_time_to >= koniec_pracy_dt
-                        AND ( godz_od IS NULL
-                           OR (godz_od - TRUNC(godz_od)) < (czas_do - TRUNC(czas_do))
-                           OR date_time_to >= koniec_zlecenia_dt )
-                        AND godziny_odpoczynku_calc < 11
-                       THEN 'NARUSZENIE - koniec dyżuru < 11h do następnej zmiany'
-                   WHEN godz_od IS NOT NULL
-                        AND (godz_od - TRUNC(godz_od)) >= (czas_do - TRUNC(czas_do))
-                        AND godziny_odpoczynku_calc < 11
-                       THEN 'NARUSZENIE - koniec nadgodzin < 11h do następnej zmiany'
-                   WHEN ( godz_od IS NULL
-                       OR (godz_od - TRUNC(godz_od)) < (czas_do - TRUNC(czas_do)) )
-                        AND godziny_odpoczynku_calc < 11
-                       THEN 'NARUSZENIE - koniec zmiany < 11h do następnej zmiany'
-                   ELSE 'OK'
+                   WHEN godziny_odpoczynku_calc IS NULL
+                       THEN 'NARUSZENIE - brak przerwy w ciągu doby (praca ciągła)'
+                   WHEN godziny_odpoczynku_calc >= 11
+                       THEN 'OK'
+                   ELSE 'NARUSZENIE - max przerwa ' || TO_CHAR(godziny_odpoczynku_calc) || 'h (' ||
+                        TO_CHAR(przerwa_od, 'HH24:MI') || ' - ' || TO_CHAR(przerwa_do, 'dd-mm HH24:MI') || ') < 11h'
                END AS czy_zach_odpoczynek_dobowy,
                dzien_mies AS dz_sort
         FROM wyliczenia
