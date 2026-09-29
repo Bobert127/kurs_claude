@@ -113,7 +113,12 @@ zlecenia_all AS (
                 THEN TRUNC(k.dzien_mies) + 1 + (z.godz_od - TRUNC(z.godz_od))
                 ELSE TRUNC(k.dzien_mies)     + (z.godz_od - TRUNC(z.godz_od))
            END AS godz_od_real,
-           CASE WHEN (z.godz_od - TRUNC(z.godz_od)) < (k.czas_od - TRUNC(k.czas_od))
+           -- UWAGA: prog przejscia przez polnoc dla KONCA zlecenia musi byc
+           -- liczony wzgledem czasu z.godz_do, nie z.godz_od - inaczej dla
+           -- zlecenia przechodzacego przez polnoc (np. 23:30-00:30) godz_do_real
+           -- wychodzi WCZESNIEJ niz godz_od_real (00:30 tego samego dnia zamiast
+           -- 00:30 dnia nastepnego), co w silniku przerw psuje liczenie odpoczynku.
+           CASE WHEN (z.godz_do - TRUNC(z.godz_do)) < (k.czas_od - TRUNC(k.czas_od))
                 THEN TRUNC(k.dzien_mies) + 1 + (z.godz_do - TRUNC(z.godz_do))
                 ELSE TRUNC(k.dzien_mies)     + (z.godz_do - TRUNC(z.godz_do))
            END AS godz_do_real
