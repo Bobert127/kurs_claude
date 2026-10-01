@@ -97,7 +97,8 @@ SELECT lp,
        odejmowanie,
        suma_roznic_h,
        zdarzenia_wtet_id_18,
-       zlecone_nadgodziny
+       zlecone_nadgodziny,
+       zach_odp_tygodniowego
 
        INTO
        V_lp,
@@ -115,7 +116,8 @@ SELECT lp,
        V_odejmowanie,
        V_suma_roznic_h,
        V_zdarzenia_wtet_id_18,
-       V_zlecone_nadgodziny
+       V_zlecone_nadgodziny,
+       V_zach_odp_tygodniowego
 
 FROM (
 WITH
@@ -333,10 +335,10 @@ WITH
         SELECT ze.prac_id,
                pa.d1,
                LISTAGG(
-                   TO_CHAR(ze.workday_date, 'DD-MM-YYYY')
+                   TO_CHAR(ze.z_od_dt, 'DD-MM-YYYY')
                        || ' ' || ze.z_godz_od || '-' || ze.z_godz_do,
                    ', '
-               ) WITHIN GROUP (ORDER BY ze.workday_date) AS z_zdarzenia
+               ) WITHIN GROUP (ORDER BY ze.z_od_dt) AS z_zdarzenia
         FROM zdarzenia ze
         JOIN pary_agg pa
              ON  pa.prac_id = ze.prac_id
@@ -385,7 +387,12 @@ SELECT
        pa.odejmowanie    AS odejmowanie,
        TO_CHAR(pa.suma_roznica_h, 'FM999999990.00') AS suma_roznic_h,
        za.z_zdarzenia    AS zdarzenia_wtet_id_18,
-       na.n_nadgodziny   AS zlecone_nadgodziny
+       na.n_nadgodziny   AS zlecone_nadgodziny,
+       CASE
+           WHEN pa.suma_roznica_h < 35
+               THEN 'Naruszenie – brak minimalnego odpoczynku tygodniowego'
+           ELSE 'OK'
+       END AS zach_odp_tygodniowego
 FROM prac_hr p
 CROSS JOIN parametry prm
 JOIN okres o ON o.prac_id = p.prac_id
@@ -406,6 +413,7 @@ LEFT JOIN nadgodziny_agg na
        AND na.d1      = pa.d1
 WHERE  pa.odejmowanie IS NOT NULL
   AND (za.prac_id IS NOT NULL OR na.prac_id IS NOT NULL)
+  AND pa.suma_roznica_h < 35
 ORDER BY p.nazwisko, p.imie, o.poczatek_okresu, t.nr
 );
 
@@ -427,4 +435,13 @@ ORDER BY p.nazwisko, p.imie, o.poczatek_okresu, t.nr
 --   tygodnia" / "zakres tygodnia") - jesli w jednym tygodniu wystapi
 --   wiecej niz jeden blok z realnym naruszeniem, raport pokaze dla
 --   niego wiecej niz jeden wiersz, zamiast gubic informacje.
+--
+-- ZMIANY W VERSION 6 (filtr tylko naruszenia + kolumna statusu):
+--   Dodano warunek pa.suma_roznica_h < 35 do WHERE - raport pokazuje
+--   tylko wiersze z naruszeniem minimalnego 35h odpoczynku tygodniowego
+--   (wczesniej pokazywal kazdy blok z co najmniej jednym przerywajacym
+--   go zdarzeniem/nadgodzina, niezaleznie od tego, czy suma_roznic_h
+--   spadala ponizej progu). Dodano kolumne zach_odp_tygodniowego z
+--   komunikatem 'Naruszenie - brak minimalnego odpoczynku tygodniowego'
+--   dla wierszy < 35h (jedyne, jakie teraz przechodza filtr WHERE).
 -- =====================================================================
