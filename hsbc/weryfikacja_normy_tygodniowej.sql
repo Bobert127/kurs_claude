@@ -35,7 +35,7 @@
 -- =============================================================================
 SELECT LP, IMIE, NAZWISKO, NR_EW, NR_KARTY, JEDNOSTKA_ORGANIZACYJNA, MPK, STANOWISKO, OKRES_ROZLICZENIOWY,
 p_d_okresu_rozliczeniowego, /* pierwszy_dzien_tygodnia, zakres_tygodnia, */ CZAS_NOM_z_kalendarza, suma_CZAS_nadgodzin,
-suma_CZAS_NOM
+ilosc_tygodni, suma_CZAS_NOM
 INTO v_lp,
 v_imie,
 v_nazwisko,
@@ -50,6 +50,7 @@ v_p_d_okresu_rozliczeniowego,
 -- v_zakres_tygodnia,
 v_czas_nom_z_kalendarza,
 v_suma_czas_nadgodzin,
+v_ilosc_tygodni,
 v_suma_czas_nom
 FROM  (
 
@@ -192,6 +193,7 @@ FROM  (
          */
          ROUND(SUM(cn.suma_kal_h), 2)  AS CZAS_NOM_z_kalendarza,
          ROUND(SUM(cn.suma_nadg_h), 2) AS suma_CZAS_nadgodzin,
+         COUNT(*)                      AS ilosc_tygodni,
          ROUND(SUM(cn.suma_czas_nom_h) / COUNT(*), 2) AS suma_CZAS_NOM
          /*
          ,ROUND(AVG(cn.suma_czas_nom_h), 2) AS srednia_CZAS_NOM_w_okresie
