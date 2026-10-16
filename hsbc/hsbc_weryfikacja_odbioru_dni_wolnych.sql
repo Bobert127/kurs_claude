@@ -66,13 +66,13 @@ WITH
   prac_hr AS (
       SELECT
              p.prac_id, p.imie, p.nazwisko, p.nr_ew, p.NR_KARTY,
-             LEAST(NVL(p.data_rozw, DATE '^$DATA_DO^'), DATE '^$DATA_DO^') AS data_ref,
+             LEAST(NVL(p.data_rozw, TO_DATE('^$DATA_DO^','^$P_DATE_FORMAT^')), TO_DATE('^$DATA_DO^','^$P_DATE_FORMAT^')) AS data_ref,
              akt_dane.j_org(p.prac_id,
-                 LEAST(NVL(p.data_rozw, DATE '^$DATA_DO^'), DATE '^$DATA_DO^')) AS jednostka_org,
+                 LEAST(NVL(p.data_rozw, TO_DATE('^$DATA_DO^','^$P_DATE_FORMAT^')), TO_DATE('^$DATA_DO^','^$P_DATE_FORMAT^'))) AS jednostka_org,
              akt_dane.mpk(p.prac_id,
-                 LEAST(NVL(p.data_rozw, DATE '^$DATA_DO^'), DATE '^$DATA_DO^')) AS mpk,
+                 LEAST(NVL(p.data_rozw, TO_DATE('^$DATA_DO^','^$P_DATE_FORMAT^')), TO_DATE('^$DATA_DO^','^$P_DATE_FORMAT^'))) AS mpk,
              akt_dane.stanowisko(p.prac_id,
-                 LEAST(NVL(p.data_rozw, DATE '^$DATA_DO^'), DATE '^$DATA_DO^')) AS stanowisko
+                 LEAST(NVL(p.data_rozw, TO_DATE('^$DATA_DO^','^$P_DATE_FORMAT^')), TO_DATE('^$DATA_DO^','^$P_DATE_FORMAT^'))) AS stanowisko
       FROM   t_prac p
       WHERE  p.prac_id IN (SELECT prac_id FROM kalendarze)
   ),
