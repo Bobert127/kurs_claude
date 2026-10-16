@@ -200,9 +200,9 @@ FROM (
         CASE WHEN z.settled = 'N' THEN 'Nie rozliczone' ELSE 'Rozliczone' END AS status,
         TO_CHAR(z.data,       'dd.mm.yyyy')                AS "data zlecenia",
         TO_CHAR(k.dzien_mies, 'dd.mm.yyyy')                AS "doba pracownicza",
-        z.czas                                             AS "czas zlecenia",
-        NVL(op.g100, 0)                                    AS "zapłata 100",
-        NVL(odb.czas, 0)                                   AS "godziny odebrane",
+        TO_CHAR(z.czas, 'FM999999990.00', 'NLS_NUMERIC_CHARACTERS=''.,''')          AS "czas zlecenia",
+        TO_CHAR(NVL(op.g100, 0), 'FM999999990.00', 'NLS_NUMERIC_CHARACTERS=''.,''') AS "zapłata 100",
+        TO_CHAR(NVL(odb.czas, 0), 'FM999999990.00', 'NLS_NUMERIC_CHARACTERS=''.,''') AS "godziny odebrane",
         CASE WHEN odb.odbior_dnia_wolnego IS NULL AND z.settled = 'T'
              THEN 'Zaplata pieniezna'
              ELSE odb.odbior_dnia_wolnego
