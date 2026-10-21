@@ -1,10 +1,14 @@
-select akt_dane.firma(p.prac_id) firma, p.nr_ew, to_char(p.data_zatr, 'YYYY-MM-DD') data_zatr, to_char(p.data_rozw, 'YYYY-MM-DD') data_rozw,
+select
+row_number() over (order by akt_dane.firma(p.prac_id), p.nazwisko, p.imie, doc.data_rejestracji desc) lp,
+akt_dane.firma(p.prac_id) firma, p.nr_ew, to_char(p.data_zatr, 'YYYY-MM-DD') data_zatr, to_char(p.data_rozw, 'YYYY-MM-DD') data_rozw,
 p.imie, p.nazwisko, akt_dane.stanowisko(p.prac_id, z.WORKDAY_DATE_FROM) stanowisko,
 doc.numer, st.nazwa as status_wniosku, ztt.name as typ_wniosku, to_char(doc.data_rejestracji, 'YYYY-MM-DD') as data_wniosku,
 to_char(z.WORKDAY_DATE_from, 'YYYY-MM-DD') as data_od, to_char(z.WORKDAY_DATE_to, 'YYYY-MM-DD') as data_do,
 zt.godzina_od as godzina_od_delegacji,
 zt.godzina_do as godzina_do_delegacji,
 initcap(akt_dane.Direct_Superior(p.prac_id, z.WORKDAY_DATE_FROM)) as przelozony
+into
+lp, firma, nr_ew, data_zatr, data_zwol, imie, nazwisko, stanowisko, nr_wniosku, status_wniosku, typ_wniosku, data_wniosku, data_od, data_do, g_od, g_do, przelozony
 from  t_prac p, KP_RCP_WORKTIME_EVENT_REQUESTS z
 left join PA_WFL_DOC_ASSOCIATIONS DOAS on z.GUID = DOAS.DOCUMENT_GUID
 left join PA_WFL_DOKUMENTY DOC on DOAS.DOKU_ID = DOC.ID
