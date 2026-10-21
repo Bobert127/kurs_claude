@@ -19,11 +19,11 @@ left join (
     to_char(min(zczp.DATE_TIME_FROM), 'HH24:MI') godzina_od,
     to_char(max(zczp.DATE_TIME_TO), 'HH24:MI') godzina_do
     from KP_RCP_WORK_TIME_EVENTS zczp
-    where zczp.wtet_id in (12,13)
+    where zczp.wtet_id in (11,12,13)
     group by zczp.wter_id
 ) zt on zt.pow = z.id and trunc(z.WORKDAY_DATE_from) = trunc(z.WORKDAY_DATE_to)
-where z.wtet_id in (12,13)
+where z.wtet_id in (11,12,13)
 and p.PRAC_ID = z.prac_id
-and z.WORKDAY_DATE_from >= to_date('2026-01-01', 'YYYY-MM-DD')
-and z.WORKDAY_DATE_to <= to_date('2026-10-31', 'YYYY-MM-DD')
-order by firma, p.nazwisko, p.imie, doc.data_rejestracji desc;
+and z.WORKDAY_DATE_from >= to_date('^$DATA_OD^', '^$P_DATE_FORMAT^')
+and z.WORKDAY_DATE_to <= to_date('^$DATA_DO^', '^$P_DATE_FORMAT^')
+order by 1;
