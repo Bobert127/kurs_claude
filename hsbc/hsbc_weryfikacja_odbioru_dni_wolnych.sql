@@ -191,9 +191,11 @@ FROM (
         p.jednostka_org                                    AS "jednostka organizacyjna",
         p.mpk,
         p.stanowisko,
-        CASE kom.dlugosc
-            WHEN 1 THEN '1 - miesieczny okres rozliczeniowy'
-            WHEN 3 THEN '3 - miesieczny okres rozliczeniowy'
+        CASE
+            WHEN kom.dlugosc = 1 AND pa_sesje.biezacy_jezyk = 'en' THEN '1 - month settlement period'
+            WHEN kom.dlugosc = 3 AND pa_sesje.biezacy_jezyk = 'en' THEN '3 - month settlement period'
+            WHEN kom.dlugosc = 1 THEN '1 - miesieczny okres rozliczeniowy'
+            WHEN kom.dlugosc = 3 THEN '3 - miesieczny okres rozliczeniowy'
         END                                                AS "okres rozliczeniowy",
         TO_CHAR(kom.poczatek_okresu, 'dd.mm.yyyy')         AS "początek okresu rozlicz.",
         TO_CHAR(kom.koniec_okresu,   'dd.mm.yyyy')         AS "koniec okresu rozlicz.",
